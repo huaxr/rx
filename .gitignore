@@ -1,0 +1,11 @@
+*~
+_obj
+*.tmp
+.idea
+.DS_Store
+output/
+vendor/
+vendor
+log/
+.vscode
+.csv
