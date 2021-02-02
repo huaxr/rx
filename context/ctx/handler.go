@@ -6,20 +6,25 @@ package ctx
 
 type HandlerFunc func(ctx ReqCxtI)
 
-var STATUS = map[int16]string{
+var defaultSTATUS = map[int16]string{
 	404 : "Page not found",
 	403 : "Bad request",
 	500: "Internal server error",
 }
 
-var HANDLERS = map[int16]HandlerFunc {
+var defaultHANDLERS = map[int16]HandlerFunc {
 	404 : func(ctx ReqCxtI) {
-		ctx.Abort(404, STATUS[404])
+		ctx.Abort(404, defaultSTATUS[404])
 	},
 	403 : func(ctx ReqCxtI) {
-		ctx.Abort(403, STATUS[403])
+		ctx.Abort(403, defaultSTATUS[403])
 	},
 	500 : func(ctx ReqCxtI) {
-		ctx.Abort(500, STATUS[500])
+		ctx.Abort(500, defaultSTATUS[500])
 	},
 }
+
+func SetDefaultHandler(status int16, handler HandlerFunc) {
+	defaultHANDLERS[status] = handler
+}
+

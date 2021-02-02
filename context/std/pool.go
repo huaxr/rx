@@ -28,7 +28,7 @@ type WorkerPool struct {
 	connChannel chan net.Conn
 	handleErr   chan error
 	wg          *sync.WaitGroup
-	srv 	*stdServer
+	srv 		*stdServer
 }
 
 func NewWorkerPool(size uint16, srv *stdServer) *WorkerPool {
@@ -95,14 +95,13 @@ func (wp *WorkerPool) startWorkers() {
 			handles := reqContext.GetDefaultHandler()
 
 			if handles == nil {
-				handles, ok := wp.srv.GetHandlers()[reqContext.GetPath(false)]
+				var ok bool
+				handles, ok = wp.srv.GetHandlers()[reqContext.GetPath(false)]
 				if !ok {
 					handles = reqContext.GetHandlerByStatus(404)
-				} else {
-					handles = handles[len(handles)-1:]
 				}
 			}
-			res := reqContext.Execute(handles...)
+			res := reqContext.ExecuteSlice(handles...)
 			_, err := con.Write(res.RspToBytes())
 			if err != nil {
 				log.Println("startWorkers error:", err)

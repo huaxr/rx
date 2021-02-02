@@ -47,19 +47,14 @@ func (srv *loopServer) execute(fd int) error {
 	c := srv.connections[fd]
 	switch {
 	case c == nil:
-		log.Println("accept")
 		return srv.loopConnect(fd)
 	case !c.isOpen():
-		log.Println("now open")
 		return srv.loopOpened(c)
 	case len(c.out) > 0:
-		log.Println("write")
 		return srv.loopWrite(c)
 	case c.signal != None:
-		log.Println("action", c.signal)
 		return srv.loopAction(c)
 	default:
-		log.Println("read")
 		return srv.loopRead(c)
 	}
 }
@@ -174,16 +169,16 @@ func (srv *loopServer) loopRead(c *conn) error {
 	reqContext := ctx.WrapRequest(c.in)
 	reqContext.SetClientAddr(c.connInfo)
 
-	handle := reqContext.GetDefaultHandler()
-	if handle == nil {
-		handles, ok := srv.GetHandlers()[reqContext.GetPath(false)]
+	handles := reqContext.GetDefaultHandler()
+
+	if handles == nil {
+		var ok bool
+		handles, ok = srv.GetHandlers()[reqContext.GetPath(false)]
 		if !ok {
-			handle = reqContext.GetHandlerByStatus(404)
-		} else {
-			handle = handles[len(handles)-1]
+			handles = reqContext.GetHandlerByStatus(404)
 		}
 	}
-	res := reqContext.Execute(handle)
+	res := reqContext.ExecuteSlice(handles...)
 	c.out = res.RspToBytes()
 
 	if len(c.out) != 0 || c.signal != None {

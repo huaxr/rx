@@ -14,21 +14,29 @@ import (
 )
 
 type RspCtxI interface {
+	// GetStatus return the status that will be set in the future.
 	GetStatus() int16
 	// Bytes return the context response byte
 	RspToBytes() []byte
+
+	// JSON response
 	JSON(status int16, response interface{})
+	// Abort response with status
 	Abort(status int16, message string)
+
+	// StopTime means the time executed done, the finished flag will be
+	// set at the same time.
+	StopTime() time.Time
+	// SetStopTime
+	SetStopTime(t time.Time)
 }
 
 type ResponseContext struct {
-	// body all the bytes to response
 	body   bytes.Buffer
 	status int16
 
 	rspHeaders map[string]interface{}
 	rspBody   []byte
-	// time response time
 	time time.Time
 }
 
@@ -77,4 +85,13 @@ func (rsp *ResponseContext) Abort(status int16, message string){
 	rsp.status = status
 	rsp.rspHeaders["Content-Type"] = internal.MIMEHTML
 	rsp.rspBody = []byte(message)
+}
+
+func (rsp *ResponseContext) StopTime() time.Time {
+
+	return rsp.time
+}
+
+func (rsp *ResponseContext) SetStopTime(t time.Time) {
+	rsp.time = t
 }

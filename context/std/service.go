@@ -5,6 +5,7 @@
 package std
 
 import (
+	"fmt"
 	"github.com/huaxr/rx/context/ctx"
 	"github.com/huaxr/rx/internal"
 	"log"
@@ -16,11 +17,9 @@ import (
 type stdServer struct {
 	//reader io.Reader
 	listener net.Listener
-
 	// the channel of socket err, EOF .eg
 	acceptErr chan error
 	workers   *WorkerPool
-
 	wp *sync.WaitGroup
 	handlers map[string][]ctx.HandlerFunc
 }
@@ -70,4 +69,31 @@ func (t *stdServer) startServer() {
 		}
 	}()
 	t.workers.wg.Wait()
+}
+
+
+func NewStdServer(addr string) *stdServer {
+	srv := newServer("tcp", addr)
+	srv.handlers = make(map[string][]ctx.HandlerFunc)
+	return srv
+}
+
+func (s *stdServer) Run() {
+	s.startServer()
+}
+
+func (s *stdServer) Register(method, path string, handlerFunc ...ctx.HandlerFunc) {
+	s.handlers[fmt.Sprintf("%s::", method)+path] = handlerFunc
+}
+
+func (s *stdServer) GetHandlers() map[string][]ctx.HandlerFunc {
+	return s.handlers
+}
+
+func (s *stdServer) GetWorker() *WorkerPool {
+	return s.workers
+}
+
+func (s *stdServer) Use(handlerFunc ...ctx.HandlerFunc) {
+
 }

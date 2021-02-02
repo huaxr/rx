@@ -9,7 +9,7 @@ const (
 
 	PieceSize = 1 << 4
 
-	WorkerSize = 5
+	WorkerSize = 1 << 4
 
 	OpenSelect     = true
 	KeepAliveCount = 1024
