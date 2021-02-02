@@ -22,18 +22,18 @@ var BtsPool = sync.Pool{
 	},
 }
 
-
 type WorkerPool struct {
 	size        uint16
 	token       chan bool
 	connChannel chan net.Conn
 	handleErr   chan error
 	wg          *sync.WaitGroup
+	srv 	*stdServer
 }
 
-func NewWorkerPool(size uint16) *WorkerPool {
+func NewWorkerPool(size uint16, srv *stdServer) *WorkerPool {
 	wp := new(WorkerPool)
-	wp.handleErr = make(chan error, 1024)
+	wp.handleErr = make(chan error, 1 << 10)
 	go wp.handlerErr()
 	wp.size = size
 	wp.token = make(chan bool, size)
@@ -43,6 +43,7 @@ func NewWorkerPool(size uint16) *WorkerPool {
 	}
 	wp.connChannel = make(chan net.Conn)
 	wp.wg.Add(internal.WorkerSize)
+	wp.srv = srv
 	for i := internal.WorkerSize; i > 0; i-- {
 		go wp.startWorkers()
 	}
@@ -87,33 +88,32 @@ func (wp *WorkerPool) startWorkers() {
 				BtsPool.Put(buf)
 			}
 
-			reqContext, err := ctx.WrapRequest(buffer.Bytes())
-			if reqContext == nil {
-				log.Println("err body format", err)
-				continue
-			}
-			// set th remoteAddr for logger usage
+			reqContext := ctx.WrapRequest(buffer.Bytes())
+			// set the remoteAddr for logger usage
 			reqContext.SetClientAddr(con.RemoteAddr())
 
-			buffer.Reset()
-			defer reqContext.PutContext()
+			handles := reqContext.GetDefaultHandler()
 
-			if err != nil {
-				wp.handleErr <- err
-				continue
+			if handles == nil {
+				handles, ok := wp.srv.GetHandlers()[reqContext.GetPath(false)]
+				if !ok {
+					handles = reqContext.GetHandlerByStatus(404)
+				} else {
+					handles = handles[len(handles)-1:]
+				}
 			}
-			handle, ok := ServerGlobal.GetHandlers()[reqContext.GetPath()]
-			if !ok {
-				handle = nil
-			}
-			res := reqContext.Execute(handle)
-			_, err = con.Write(res.Bytes())
+			res := reqContext.Execute(handles...)
+			_, err := con.Write(res.RspToBytes())
 			if err != nil {
 				log.Println("startWorkers error:", err)
 				_ = con.Close()
 				continue
 			}
 			_ = con.Close()
+			defer func() {
+				buffer.Reset()
+				ctx.PutContext(reqContext)
+			}()
 		}
 	}
 }

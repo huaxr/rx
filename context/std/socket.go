@@ -5,6 +5,7 @@
 package std
 
 import (
+	"github.com/huaxr/rx/context/ctx"
 	"github.com/huaxr/rx/internal"
 	"log"
 	"net"
@@ -12,7 +13,7 @@ import (
 )
 
 // TcpSocket the raw socket
-type TcpSocket struct {
+type stdServer struct {
 	//reader io.Reader
 	listener net.Listener
 
@@ -21,24 +22,25 @@ type TcpSocket struct {
 	workers   *WorkerPool
 
 	wp *sync.WaitGroup
+	handlers map[string][]ctx.HandlerFunc
 }
 
-func (t *TcpSocket) GetAddr() string {
+func (t *stdServer) GetAddr() string {
 	return t.listener.Addr().String()
 }
 
-func (t *TcpSocket) GetNetwork() string {
+func (t *stdServer) GetNetwork() string {
 	return t.listener.Addr().Network()
 }
 
-func (t *TcpSocket) handlerErr() {
+func (t *stdServer) handlerErr() {
 	for i := range t.acceptErr {
 		log.Println("TcpSocket err:", i)
 	}
 }
 
-func newServer(network string, addr string) *TcpSocket {
-	t := new(TcpSocket)
+func newServer(network string, addr string) *stdServer {
+	t := new(stdServer)
 	once := sync.Once{}
 	once.Do(func() {
 		t.acceptErr = make(chan error, 1024)
@@ -47,14 +49,14 @@ func newServer(network string, addr string) *TcpSocket {
 			panic(err)
 		}
 		t.listener = listen
-		t.workers = NewWorkerPool(internal.Concurrent)
+		t.workers = NewWorkerPool(internal.Concurrent, t)
 	})
 	go t.handlerErr()
 	return t
 
 }
 
-func (t *TcpSocket) startServer() {
+func (t *stdServer) startServer() {
 	log.Println("start server on:", t.GetAddr())
 	go func() {
 		for {

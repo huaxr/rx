@@ -2,12 +2,14 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package ctx
+package main
 
-import "context"
+import (
+	"log"
+	"testing"
+)
 
-type Context struct {
-	Ctx context.Context
-	Req ReqCxtI
-	Rsp RspCtxI
+func TestExample(t *testing.T) {
+	a := []string{"c"}
+	log.Println(a[len(a)-1])
 }

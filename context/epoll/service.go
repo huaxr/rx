@@ -26,7 +26,8 @@ type loopServer struct {
 	count   atomic.Int32
 	btsPool *sync.Pool
 	//wg sync.WaitGroup
-	handlers map[string]ctx.HandlerFunc
+	handlers map[string][]ctx.HandlerFunc
+	//groupHandlers ctx.HandlerFunc
 }
 
 func (srv *loopServer) Run() {
@@ -34,15 +35,11 @@ func (srv *loopServer) Run() {
 	srv.poll.Looping(srv.execute)
 }
 
-func (srv *loopServer) Register(method, path string, handlerFunc ctx.HandlerFunc) {
-	if !handlerFunc.Validate(method) {
-		log.Println("not support method router")
-		return
-	}
+func (srv *loopServer) Register(method, path string, handlerFunc ...ctx.HandlerFunc) {
 	srv.handlers[fmt.Sprintf("%s::", method)+path] = handlerFunc
 }
 
-func (s *loopServer) GetHandlers() map[string]ctx.HandlerFunc {
+func (s *loopServer) GetHandlers() map[string][]ctx.HandlerFunc {
 	return s.handlers
 }
 
@@ -174,29 +171,30 @@ func (srv *loopServer) loopRead(c *conn) error {
 		return nil
 	}
 
-	reqContext, err := ctx.WrapRequest(c.in)
-	if reqContext == nil {
-		log.Println("err body format", err)
-		return nil
-	}
+	reqContext := ctx.WrapRequest(c.in)
 	reqContext.SetClientAddr(c.connInfo)
 
-	reqContext.PutContext()
-
-	if err != nil {
-		return err
-	}
-	handle, ok := srv.GetHandlers()[reqContext.GetPath()]
-	if !ok {
-		handle = nil
+	handle := reqContext.GetDefaultHandler()
+	if handle == nil {
+		handles, ok := srv.GetHandlers()[reqContext.GetPath(false)]
+		if !ok {
+			handle = reqContext.GetHandlerByStatus(404)
+		} else {
+			handle = handles[len(handles)-1]
+		}
 	}
 	res := reqContext.Execute(handle)
-	c.out = res.Bytes()
+	c.out = res.RspToBytes()
 
-	log.Println(string(c.out))
 	if len(c.out) != 0 || c.signal != None {
 		srv.poll.ChangeRW(c.sock)
 	}
+
+	defer func() {
+		ctx.PutContext(reqContext)
+		//c.out = c.out[:0]
+	}()
+
 	return nil
 }
 
@@ -208,4 +206,8 @@ func (srv *loopServer) Close() {
 	_ = srv.poll.Close()
 	_ = srv.socket.Close()
 	_ = srv.sockFile.Close()
+}
+
+func (srv *loopServer) Use(handlerFunc ...ctx.HandlerFunc) {
+
 }

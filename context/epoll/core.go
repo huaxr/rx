@@ -39,7 +39,7 @@ func NewPollServer(addr string) *loopServer {
 		},
 	}
 	srv.poll.AddRead(srv.fd)
-	srv.handlers = make(map[string]ctx.HandlerFunc)
+	srv.handlers = make(map[string][]ctx.HandlerFunc)
 	return srv
 }
 

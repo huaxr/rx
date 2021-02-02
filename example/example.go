@@ -7,20 +7,22 @@ import (
 	"time"
 )
 
-func handler(ctx *ctx.Context) {
+func handler(ctx ctx.ReqCxtI) {
 	ctx.JSON(200, map[string]interface{}{"time": time.Now()})
-	return
 }
 
 // std epoll
-func main1() {
-	server := context.NewServer("epoll", "127.0.0.1:9999")
-	server.Register("get", "/aaa", handler)
+func main() {
+	server := context.NewServer("std", "127.0.0.1:9999")
+
+	server.Register("get", "/aaa", ctx.Log, handler)
+
 	server.Run()
 }
 
-func main() {
+func main2() {
 	r := gin.Default()
+	r.Use()
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",

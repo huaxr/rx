@@ -4,15 +4,22 @@
 
 package ctx
 
-type HandlerFunc func(ctx *RequestContext)
+type HandlerFunc func(ctx ReqCxtI)
 
-var allowed_method = []string{"get", "post"}
+var STATUS = map[int16]string{
+	404 : "Page not found",
+	403 : "Bad request",
+	500: "Internal server error",
+}
 
-func (h *HandlerFunc) Validate(value string) bool {
-	for _, i := range allowed_method {
-		if value == i {
-			return true
-		}
-	}
-	return false
+var HANDLERS = map[int16]HandlerFunc {
+	404 : func(ctx ReqCxtI) {
+		ctx.Abort(404, STATUS[404])
+	},
+	403 : func(ctx ReqCxtI) {
+		ctx.Abort(403, STATUS[403])
+	},
+	500 : func(ctx ReqCxtI) {
+		ctx.Abort(500, STATUS[500])
+	},
 }

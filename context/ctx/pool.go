@@ -9,21 +9,19 @@ import "sync"
 var reqCtxPool = sync.Pool{
 	New: func() interface{} {
 		return &RequestContext{
+			ResponseContext:  ResponseContext{
+				rspHeaders: make(map[string]interface{}),
+			},
 			reqHeaders: make(map[string]interface{}),
-			//params:  make(map[string]interface{}),
-			//local : new(sync.Map),
-			//response: &ResponseContext{
-			//	header:       make(map[string]string),
-			//	responseBody: nil,
-			//},
 		}
 	},
 }
 
-func GetContext() *RequestContext {
-	return reqCtxPool.Get().(*RequestContext)
+func GetContext() ReqCxtI {
+	return reqCtxPool.Get().(ReqCxtI)
 }
 
-func (rc *RequestContext) PutContext() {
+func PutContext(rc ReqCxtI) {
+	rc.Free()
 	reqCtxPool.Put(rc)
 }

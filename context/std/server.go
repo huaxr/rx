@@ -7,41 +7,31 @@ package std
 import (
 	"fmt"
 	"github.com/huaxr/rx/context/ctx"
-	"log"
 )
 
-type stdServer struct {
-	server   *TcpSocket
-	handlers map[string]ctx.HandlerFunc
-}
-
 func NewStdServer(addr string) *stdServer {
-	core := new(stdServer)
-	core.handlers = make(map[string]ctx.HandlerFunc)
 	srv := newServer("tcp", addr)
-	core.server = srv
-	ServerGlobal = core
-	return core
+	srv.handlers = make(map[string][]ctx.HandlerFunc)
+	return srv
 }
 
 func (s *stdServer) Run() {
-	s.server.startServer()
+	s.startServer()
 }
 
-func (s *stdServer) Register(method, path string, handlerFunc ctx.HandlerFunc) {
-	if !handlerFunc.Validate(method) {
-		log.Println("not support method router")
-		return
-	}
+func (s *stdServer) Register(method, path string, handlerFunc ...ctx.HandlerFunc) {
 	s.handlers[fmt.Sprintf("%s::", method)+path] = handlerFunc
 }
 
-func (s *stdServer) GetHandlers() map[string]ctx.HandlerFunc {
+func (s *stdServer) GetHandlers() map[string][]ctx.HandlerFunc {
 	return s.handlers
 }
 
 func (s *stdServer) GetWorker() *WorkerPool {
-	return s.server.workers
+	return s.workers
 }
 
-var ServerGlobal *stdServer
+func (s *stdServer) Use(handlerFunc ...ctx.HandlerFunc) {
+
+}
+

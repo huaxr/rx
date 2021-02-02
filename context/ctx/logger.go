@@ -2,11 +2,10 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package internal
+package ctx
 
 import (
 	"fmt"
-	"github.com/huaxr/rx/context/ctx"
 	"io"
 	"net/http"
 	"os"
@@ -133,7 +132,7 @@ var defaultLogFormatter = func(param LogFormatterParams) string {
 	)
 }
 
-func Log(ctx *ctx.RequestContext) {
+func Log(ctx ReqCxtI) {
 	start := time.Now()
 	param := LogFormatterParams{}
 
@@ -144,7 +143,7 @@ func Log(ctx *ctx.RequestContext) {
 	param.ClientIP = ctx.GetClientAddr()
 	param.Method = ctx.GetMethod()
 	//param.StatusCode = ctx.GetResponseStatus()
-	param.Path = ctx.GetLocation()
+	param.Path = ctx.GetPath(true)
 
 	fmt.Fprint(DefaultWriter, defaultLogFormatter(param))
 }

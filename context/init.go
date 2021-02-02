@@ -13,8 +13,10 @@ import (
 type Server interface {
 	Run()
 	// Register handlers to the srv
-	Register(method, path string, handlerFunc ctx.HandlerFunc)
-	GetHandlers() map[string]ctx.HandlerFunc
+	Register(method, path string, handlerFunc ...ctx.HandlerFunc)
+
+	GetHandlers() map[string][]ctx.HandlerFunc
+	Use(handlerFunc ...ctx.HandlerFunc)
 }
 
 func NewServer(mod string, addr string) Server {
