@@ -5,11 +5,12 @@
 package ctx
 
 import (
+	"github.com/huaxr/rx/internal"
 	"sync"
 )
 
 type (
-	HandlerFuncStack struct {
+	stack struct {
 		top    *node
 		length int
 		lock   *sync.RWMutex
@@ -21,18 +22,38 @@ type (
 	}
 )
 
-// Create a new stack
-func NewStack() *HandlerFuncStack {
-	return &HandlerFuncStack{nil, 0, &sync.RWMutex{}}
+var handlerSlice = make(map[int][]HandlerFunc)
+
+var groupHandlerSlice = make(map[string][]HandlerFunc)
+
+// copyStack copy the HandlerFunc from the handlerSlice.
+// For each request the has it's own stack to execute
+func copyStack(str string) (*stack){
+	slice, ok := handlerSlice[internal.CRC(str)]
+	if !ok || len(slice) == 0{
+		return nil
+	}
+
+	s := NewStack()
+	for l:=0; l<=len(slice)-1; l++ {
+		s.Push(slice[l])
+	}
+	return s
 }
 
-// Return the number of items in the stack
-func (this *HandlerFuncStack) Len() int {
+// NewStack return the new instance of stack.
+// when sync.Poll cache the stack may cause problem here.
+func NewStack() *stack {
+	return &stack{nil, 0, &sync.RWMutex{}}
+}
+
+// Len Return the number of items in the stack
+func (this *stack) Len() int {
 	return this.length
 }
 
-// View the top item on the stack
-func (this *HandlerFuncStack) Peek() HandlerFunc {
+// Peek View the top item on the stack
+func (this *stack) Peek() HandlerFunc {
 	if this.length == 0 {
 		return nil
 	}
@@ -40,7 +61,7 @@ func (this *HandlerFuncStack) Peek() HandlerFunc {
 }
 
 // Pop the top item of the stack and return it
-func (this *HandlerFuncStack) Pop() HandlerFunc {
+func (this *stack) Pop() HandlerFunc {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	if this.length == 0 {
@@ -53,7 +74,7 @@ func (this *HandlerFuncStack) Pop() HandlerFunc {
 }
 
 // Push a value onto the top of the stack
-func (this *HandlerFuncStack) Push(value HandlerFunc) {
+func (this *stack) Push(value HandlerFunc) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	n := &node{value, this.top}

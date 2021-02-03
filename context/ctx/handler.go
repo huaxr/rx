@@ -4,6 +4,11 @@
 
 package ctx
 
+import (
+	"fmt"
+	"github.com/huaxr/rx/internal"
+)
+
 type HandlerFunc func(ctx ReqCxtI)
 
 var defaultSTATUS = map[int16]string{
@@ -28,3 +33,13 @@ func SetDefaultHandler(status int16, handler HandlerFunc) {
 	defaultHANDLERS[status] = handler
 }
 
+func Register(method, path string, handlerFuncs ...HandlerFunc) {
+	p := internal.CRC(fmt.Sprintf("%s::", method)+path)
+	for l := len(handlerFuncs)-1; l>=0; l-- {
+		handlerSlice[p] = append(handlerSlice[p], handlerFuncs[l])
+	}
+}
+
+//func Register(group string, handlerFuncs ...HandlerFunc) {
+//	preHandlerSlice[group] = handlerFuncs
+//}

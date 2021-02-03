@@ -29,16 +29,11 @@ type ReqCxtI interface {
 	// stack HandlerFunc can using the dynamic push option
 	// to return a HandlerFunc to the stack peek and execute
 	// it when next pop.
-	ExecuteSlice(handlerFunc ...HandlerFunc) RspCtxI
-	ExecuteStack(handlerFunc *HandlerFuncStack) RspCtxI
+	Execute() RspCtxI
 
 	// SetAbort can make the current flow stop.
 	SetAbort(status int16, message string)
 
-	// GetDefaultHandler
-	GetDefaultHandler() []HandlerFunc
-	// GetHandlerByStatus
-	GetHandlerByStatus(status int16) []HandlerFunc
 	// Free when get ReqCxtI from sync.pool, clear the allocated map fields.
 	Free() ReqCxtI
 
@@ -53,7 +48,7 @@ type ReqCxtI interface {
 	Get(key string) interface{}
 	// Push calling push when execute a HandlerFunc and push the next Handler
 	// to execute or jump to anther HandlerFunc to deal with the request.
-	Push(handlerFunc HandlerFunc)
+	Next(handlerFunc HandlerFunc)
 }
 
 type AbortContext struct {
@@ -83,9 +78,9 @@ type RequestContext struct {
 	flashStore *sync.Map
 
 	finished *atomic.Bool
+	// stack record the executable func
+	stack *stack
 }
-
-
 
 func (r *RequestContext) GetPath(real bool) string {
 	if real {
@@ -123,8 +118,9 @@ func (r *RequestContext) IsAbort() bool {
 
 func (r *RequestContext) Free() ReqCxtI{
 	r.abort = nil
+	r.reqHeaders = map[string]interface{}{}
 	r.rspHeaders = map[string]interface{}{}
-	r.rspHeaders = map[string]interface{}{}
+	r.flashStore = &sync.Map{}
 	return r
 }
 
@@ -141,7 +137,6 @@ func WrapRequest(buffer []byte) ReqCxtI {
 		if err != nil {
 			goto ABORT
 		}
-
 	} else if len(headerAndBody) == 2 {
 		err = reqCtx.wrapRequestHeader(headerAndBody[0])
 		if err != nil {
@@ -195,31 +190,23 @@ func (rc *RequestContext) wrapRequestBody(body []byte) error {
 	return nil
 }
 
-func (rc *RequestContext) ExecuteSlice(handlerFunc ...HandlerFunc) RspCtxI {
-	preHandlers := handlerFunc[:len(handlerFunc)-1]
-
-	if len(preHandlers) > 0 {
-		for _, handler := range preHandlers {
-			handler(rc)
-		}
-	}
-
-	define := handlerFunc[len(handlerFunc)-1]
-	define(rc)
-
+func (rc *RequestContext) finish() {
 	rc.SetStopTime(time.Now())
 	rc.finished.Store(true)
-
 	Log(rc)
+}
+
+func (rc *RequestContext) Execute() RspCtxI {
+	rc.initStack()
+	for rc.stack.length > 0 {
+		s := rc.stack.Pop()
+		s(rc)
+	}
+	rc.finish()
 	return &rc.ResponseContext
 }
 
-func (rc *RequestContext) ExecuteStack(handlerFunc *HandlerFuncStack) RspCtxI {
-
-	return nil
-}
-
-func (rc *RequestContext) GetDefaultHandler() []HandlerFunc{
+func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc{
 	if rc.IsAbort() {
 		handlers := []HandlerFunc{}
 		status := rc.abort.abortStatus
@@ -241,12 +228,27 @@ func (rc *RequestContext) GetDefaultHandler() []HandlerFunc{
 	return nil
 }
 
-func (rc *RequestContext) GetHandlerByStatus(status int16) []HandlerFunc {
-	handlers := []HandlerFunc{}
-	handlers = append(handlers, defaultHANDLERS[status])
-	return handlers
+func (rc *RequestContext) getDefaultHandlerStack() *stack{
+	if rc.IsAbort() {
+		handlers := NewStack()
+		status := rc.abort.abortStatus
+		switch {
+		case status >= 100 && status <= 199:
+			return nil
+		default:
+			handler, ok := defaultHANDLERS[status]
+			if !ok {
+				handlers.Push(func(ctx ReqCxtI) {
+					ctx.Abort(500, defaultSTATUS[500])
+				})
+				return handlers
+			}
+			handlers.Push(handler)
+			return handlers
+		}
+	}
+	return nil
 }
-
 
 func (rc *RequestContext) Set(key string, val interface{}) {
 	rc.flashStore.Store(key, val)
@@ -265,7 +267,20 @@ func (rc *RequestContext) Finished() bool {
 	return rc.finished.Load()
 }
 
+func (rc *RequestContext) Next(handlerFunc HandlerFunc) {
+	rc.stack.Push(handlerFunc)
+}
 
-func (rsp *RequestContext) Push(handlerFunc HandlerFunc) {
+func (rc *RequestContext) initStack() {
+	handles := rc.getDefaultHandlerStack()
+	if handles != nil {
+		return
+	}
+	handles = copyStack(rc.GetPath(false))
+	if handles == nil {
+		handles = NewStack()
+		handles.Push(defaultHANDLERS[404])
+	}
 
+	rc.stack = handles
 }

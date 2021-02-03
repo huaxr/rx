@@ -5,7 +5,6 @@
 package epoll
 
 import (
-	"fmt"
 	"github.com/huaxr/rx/context/ctx"
 	"go.uber.org/atomic"
 	"log"
@@ -25,22 +24,15 @@ type loopServer struct {
 	// connections key count
 	count   atomic.Int32
 	btsPool *sync.Pool
+
 	//wg sync.WaitGroup
-	handlers map[string][]ctx.HandlerFunc
+	//handlers map[string][]ctx.HandlerFunc
 	//groupHandlers ctx.HandlerFunc
 }
 
 func (srv *loopServer) Run() {
 	log.Println("starting the epoll")
 	srv.poll.Looping(srv.execute)
-}
-
-func (srv *loopServer) Register(method, path string, handlerFunc ...ctx.HandlerFunc) {
-	srv.handlers[fmt.Sprintf("%s::", method)+path] = handlerFunc
-}
-
-func (s *loopServer) GetHandlers() map[string][]ctx.HandlerFunc {
-	return s.handlers
 }
 
 func (srv *loopServer) execute(fd int) error {
@@ -167,29 +159,15 @@ func (srv *loopServer) loopRead(c *conn) error {
 	}
 
 	reqContext := ctx.WrapRequest(c.in)
+	ctx.PutContext(reqContext)
 	reqContext.SetClientAddr(c.connInfo)
 
-	handles := reqContext.GetDefaultHandler()
-
-	if handles == nil {
-		var ok bool
-		handles, ok = srv.GetHandlers()[reqContext.GetPath(false)]
-		if !ok {
-			handles = reqContext.GetHandlerByStatus(404)
-		}
-	}
-	res := reqContext.ExecuteSlice(handles...)
+	res := reqContext.Execute()
 	c.out = res.RspToBytes()
 
 	if len(c.out) != 0 || c.signal != None {
 		srv.poll.ChangeRW(c.sock)
 	}
-
-	defer func() {
-		ctx.PutContext(reqContext)
-		//c.out = c.out[:0]
-	}()
-
 	return nil
 }
 

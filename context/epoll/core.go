@@ -5,7 +5,6 @@
 package epoll
 
 import (
-	"github.com/huaxr/rx/context/ctx"
 	"net"
 	"sync"
 	"syscall"
@@ -39,7 +38,6 @@ func NewPollServer(addr string) *loopServer {
 		},
 	}
 	srv.poll.AddRead(srv.fd)
-	srv.handlers = make(map[string][]ctx.HandlerFunc)
 	return srv
 }
 

@@ -17,25 +17,27 @@ PASS
 ok  	test/test9	9.776s*/
 
 
-var stack *HandlerFuncStack
+var st *stack
 
-func init() {
-	stack = NewStack()
+func Init() {
+	st = NewStack()
 }
 
 func Benchmark_Push(b *testing.B) {
+	Init()
 	for i := 0; i < b.N; i++ { //use b.N for looping
-		stack.Push(nil)
+		st.Push(nil)
 	}
 }
 
 func Benchmark_Pop(b *testing.B) {
+	Init()
 	b.StopTimer()
 	for i := 0; i < b.N; i++ { //use b.N for looping
-		stack.Push(nil)
+		st.Push(nil)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ { //use b.N for looping
-		stack.Pop()
+		st.Pop()
 	}
 }

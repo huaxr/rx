@@ -5,7 +5,6 @@
 package context
 
 import (
-	"github.com/huaxr/rx/context/ctx"
 	"github.com/huaxr/rx/context/epoll"
 	"github.com/huaxr/rx/context/std"
 )
@@ -13,10 +12,10 @@ import (
 type Server interface {
 	Run()
 	// Register handlers to the srv
-	Register(method, path string, handlerFunc ...ctx.HandlerFunc)
+	//Register(method, path string, handlerFunc ...ctx.HandlerFunc)
 
-	GetHandlers() map[string][]ctx.HandlerFunc
-	Use(handlerFunc ...ctx.HandlerFunc)
+	//GetHandlers() map[string][]ctx.HandlerFunc
+	//Use(handlerFunc ...ctx.HandlerFunc)
 }
 
 func NewServer(mod string, addr string) Server {

@@ -4,13 +4,18 @@
 
 package ctx
 
-import "sync"
+import (
+	"bytes"
+	"sync"
+)
 
 var reqCtxPool = sync.Pool{
 	New: func() interface{} {
 		return &RequestContext{
 			ResponseContext:  ResponseContext{
 				rspHeaders: make(map[string]interface{}),
+				rspBody: []byte{},
+				body: bytes.Buffer{},
 			},
 			reqHeaders: make(map[string]interface{}),
 		}

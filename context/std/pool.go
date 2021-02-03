@@ -72,6 +72,7 @@ func (wp *WorkerPool) startWorkers() {
 		case con := <-wp.connChannel:
 			reader := bufio.NewReader(con)
 			var buffer bytes.Buffer
+			// add cancel here
 			for {
 				var buf = BtsPool.Get().([]byte)
 				n, err := reader.Read(buf[:])
@@ -83,25 +84,17 @@ func (wp *WorkerPool) startWorkers() {
 					log.Println(err)
 					continue
 				}
-				//buffer = append(buffer, buf...)
 				buffer.Write(buf)
 				BtsPool.Put(buf)
 			}
 
 			reqContext := ctx.WrapRequest(buffer.Bytes())
+			defer ctx.PutContext(reqContext)
+			buffer.Reset()
+
 			// set the remoteAddr for logger usage
 			reqContext.SetClientAddr(con.RemoteAddr())
-
-			handles := reqContext.GetDefaultHandler()
-
-			if handles == nil {
-				var ok bool
-				handles, ok = wp.srv.GetHandlers()[reqContext.GetPath(false)]
-				if !ok {
-					handles = reqContext.GetHandlerByStatus(404)
-				}
-			}
-			res := reqContext.ExecuteSlice(handles...)
+			res := reqContext.Execute()
 			_, err := con.Write(res.RspToBytes())
 			if err != nil {
 				log.Println("startWorkers error:", err)
@@ -109,10 +102,6 @@ func (wp *WorkerPool) startWorkers() {
 				continue
 			}
 			_ = con.Close()
-			defer func() {
-				buffer.Reset()
-				ctx.PutContext(reqContext)
-			}()
 		}
 	}
 }
