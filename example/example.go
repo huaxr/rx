@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/huaxr/rx/context"
 	"github.com/huaxr/rx/context/ctx"
 	"log"
@@ -41,18 +40,4 @@ func main() {
 	//ctx.Group("/api/auth", handler4)
 
 	ctx.Register("get", "/aaa", handler3, handler2, handler)
-}
-
-func main2() {
-	r := gin.Default()
-	r.Use()
-
-	r.GET("/ping", func(c *gin.Context) {
-		c.Next()
-		c.Set("a", "a")
-		c.JSON(200, gin.H{
-			"message": time.Now(),
-		})
-	})
-	r.Run(":9999") // 监听并在 0.0.0.0:8080 上启动服务
 }
