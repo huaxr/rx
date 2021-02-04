@@ -41,5 +41,5 @@ func handler5(ctx ctx.ReqCxtI) {
 	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
 	log.Println("execute handler5", err, post.Name)
 	ctx.Next(handler)
-	ctx.Abort(200, "sorry")
+	//ctx.Abort(200, "sorry")
 }
