@@ -8,9 +8,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/huaxr/rx/internal"
 	"log"
 	"time"
+
+	"github.com/huaxr/rx/internal"
 )
 
 type RspCtxI interface {
@@ -36,8 +37,8 @@ type ResponseContext struct {
 	status int16
 
 	rspHeaders map[string]interface{}
-	rspBody   []byte
-	time time.Time
+	rspBody    []byte
+	time       time.Time
 }
 
 func (r *ResponseContext) GetStatus() int16 {
@@ -50,10 +51,11 @@ func (res *ResponseContext) wrapResponse() {
 		res.body.Write([]byte(fmt.Sprintf("Content-Length: %d", len(string(res.rspBody))) + "\r\n"))
 		res.wrapResponseBody()
 	}
+	res.rspBody = []byte{}
 }
 
 func (res *ResponseContext) wrapResponseHeader() {
-	firstLine := fmt.Sprintf("HTTP/2 %d\r\n", res.status)
+	firstLine := fmt.Sprintf("HTTP/1.1 %d\r\n", res.status)
 	res.body.Write([]byte(firstLine))
 	for k, v := range res.rspHeaders {
 		res.body.Write([]byte(k + ": " + v.(string) + "\r\n"))
@@ -78,17 +80,16 @@ func (rsp *ResponseContext) JSON(status int16, response interface{}) {
 	if err != nil {
 		log.Println(err)
 	}
-	rsp.rspBody = bits
+	rsp.rspBody = append(rsp.rspBody, bits...)
 }
 
-func (rsp *ResponseContext) Abort(status int16, message string){
+func (rsp *ResponseContext) Abort(status int16, message string) {
 	rsp.status = status
 	rsp.rspHeaders["Content-Type"] = internal.MIMEHTML
 	rsp.rspBody = []byte(message)
 }
 
 func (rsp *ResponseContext) StopTime() time.Time {
-
 	return rsp.time
 }
 

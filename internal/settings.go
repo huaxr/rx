@@ -7,10 +7,7 @@ package internal
 const (
 	Concurrent = 1024
 
-	PieceSize = 1 << 4
+	PieceSize = 1<<10 + 3
 
 	WorkerSize = 1 << 4
-
-	OpenSelect     = true
-	KeepAliveCount = 1024
 )

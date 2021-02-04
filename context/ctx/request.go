@@ -6,12 +6,18 @@ package ctx
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
-	"go.uber.org/atomic"
+	"log"
 	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/huaxr/rx/internal"
+
+	"go.uber.org/atomic"
 )
 
 type ReqCxtI interface {
@@ -23,6 +29,8 @@ type ReqCxtI interface {
 	GetHeaders() map[string]interface{}
 	GetMethod() string
 	GetClientAddr() string
+	// GetBody return the request body bytes
+	GetBody() []byte
 	// SetClientAddr set the address for logger usage
 	SetClientAddr(addr net.Addr)
 	// Execute execute each HandlerFunc on stack or slice.
@@ -49,11 +57,15 @@ type ReqCxtI interface {
 	// Push calling push when execute a HandlerFunc and push the next Handler
 	// to execute or jump to anther HandlerFunc to deal with the request.
 	Next(handlerFunc HandlerFunc)
+
+	GetQuery(key, dft string) string
+	// ParseBody turn the body bytes to dst
+	ParseBody(dst interface{}) error
 }
 
 type AbortContext struct {
 	abortStatus int16
-	message string
+	message     string
 }
 
 // RequestContext contains all the context when a req has triggered
@@ -61,9 +73,9 @@ type RequestContext struct {
 	//context.Context
 	ResponseContext
 	// method request method
-	method  string
+	method string
 	// path request location
-	path    string
+	path string
 	// clientAddr the remote addr
 	clientAddr net.Addr
 	// time request time time.now()
@@ -72,8 +84,10 @@ type RequestContext struct {
 	abort *AbortContext
 	// headers request header key-value
 	reqHeaders map[string]interface{}
+	// reqParameters the request raw query parse to map
+	reqParameters url.Values
 	// body request body bytes
-	reqBody    bytes.Buffer
+	reqBody bytes.Buffer
 
 	flashStore *sync.Map
 
@@ -97,6 +111,10 @@ func (r *RequestContext) GetMethod() string {
 	return r.method
 }
 
+func (r *RequestContext) GetBody() []byte {
+	return r.reqBody.Bytes()
+}
+
 func (r *RequestContext) GetClientAddr() string {
 	return r.clientAddr.String()
 }
@@ -108,7 +126,7 @@ func (r *RequestContext) SetClientAddr(addr net.Addr) {
 func (r *RequestContext) SetAbort(status int16, message string) {
 	r.abort = &AbortContext{
 		abortStatus: status,
-		message: message,
+		message:     message,
 	}
 }
 
@@ -116,7 +134,7 @@ func (r *RequestContext) IsAbort() bool {
 	return r.abort != nil
 }
 
-func (r *RequestContext) Free() ReqCxtI{
+func (r *RequestContext) Free() ReqCxtI {
 	r.abort = nil
 	r.reqHeaders = map[string]interface{}{}
 	r.rspHeaders = map[string]interface{}{}
@@ -132,22 +150,19 @@ func WrapRequest(buffer []byte) ReqCxtI {
 	reqCtx.flashStore = new(sync.Map)
 
 	headerAndBody := bytes.Split(buffer, []byte("\r\n\r\n"))
-	if len(headerAndBody) == 1 {
-		err = reqCtx.wrapRequestHeader(headerAndBody[0])
-		if err != nil {
-			goto ABORT
-		}
-	} else if len(headerAndBody) == 2 {
-		err = reqCtx.wrapRequestHeader(headerAndBody[0])
-		if err != nil {
-			goto ABORT
-		}
+	if len(headerAndBody) != 2 {
+		goto ABORT
+	}
+	err = reqCtx.wrapRequestHeader(headerAndBody[0])
+	if err != nil {
+		goto ABORT
+	}
+
+	if len(headerAndBody[1]) > 0 {
 		err = reqCtx.wrapRequestBody(headerAndBody[1])
 		if err != nil {
 			goto ABORT
 		}
-	} else {
-		goto ABORT
 	}
 	return reqCtx
 
@@ -167,15 +182,29 @@ func (rc *RequestContext) wrapRequestHeader(header []byte) error {
 	if len(firstLine) != 3 {
 		return errors.New("err first line parse")
 	}
+	queryUrl, err := url.Parse(firstLine[1])
+	if err != nil {
+		log.Println("err when handler the query path")
+		return err
+	}
 	// delete version
-	rc.method, rc.path = firstLine[0], firstLine[1]
+	params, err := url.ParseQuery(queryUrl.RawQuery)
+	if err != nil {
+		log.Println("err when handler the query raw path")
+		return err
+	}
+	rc.reqParameters = params
+	rc.method, rc.path = firstLine[0], queryUrl.Path
 
 	for _, line := range headerLines[1:] {
-		pair := strings.Split(string(line), ": ")
+		pair := strings.SplitN(string(line), ":", 2)
 		if len(pair) != 2 {
 			continue
 		}
-		rc.reqHeaders[pair[0]] = pair[1]
+		// using ToLower in order to avoid that when use ab test.
+		// the request header is not formatted like usually.
+		// Context-type/Content-Type ex.
+		rc.reqHeaders[strings.ToLower(pair[0])] = strings.TrimSpace(pair[1])
 	}
 	return nil
 }
@@ -206,7 +235,7 @@ func (rc *RequestContext) Execute() RspCtxI {
 	return &rc.ResponseContext
 }
 
-func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc{
+func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc {
 	if rc.IsAbort() {
 		handlers := []HandlerFunc{}
 		status := rc.abort.abortStatus
@@ -228,14 +257,14 @@ func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc{
 	return nil
 }
 
-func (rc *RequestContext) getDefaultHandlerStack() *stack{
+func (rc *RequestContext) getDefaultHandlerStack() *stack {
 	if rc.IsAbort() {
-		handlers := NewStack()
 		status := rc.abort.abortStatus
 		switch {
 		case status >= 100 && status <= 199:
 			return nil
 		default:
+			handlers := NewStack()
 			handler, ok := defaultHANDLERS[status]
 			if !ok {
 				handlers.Push(func(ctx ReqCxtI) {
@@ -255,7 +284,7 @@ func (rc *RequestContext) Set(key string, val interface{}) {
 }
 
 func (rc *RequestContext) Get(key string) interface{} {
-	val, _ :=  rc.flashStore.Load(key)
+	val, _ := rc.flashStore.Load(key)
 	return val
 }
 
@@ -274,6 +303,7 @@ func (rc *RequestContext) Next(handlerFunc HandlerFunc) {
 func (rc *RequestContext) initStack() {
 	handles := rc.getDefaultHandlerStack()
 	if handles != nil {
+		rc.stack = handles
 		return
 	}
 	handles = copyStack(rc.GetPath(false))
@@ -281,6 +311,31 @@ func (rc *RequestContext) initStack() {
 		handles = NewStack()
 		handles.Push(defaultHANDLERS[404])
 	}
-
 	rc.stack = handles
+}
+
+func (rc *RequestContext) GetQuery(key, dft string) string {
+	if val := rc.reqParameters.Get(key); val != "" {
+		return val
+	}
+	return dft
+}
+
+func (rc *RequestContext) ParseBody(dst interface{}) error {
+	contentType, ok := rc.reqHeaders["content-type"]
+	if !ok {
+		contentType = internal.MIMEPlain
+	}
+	switch contentType {
+	case internal.MIMEPlain:
+
+	case internal.MIMEJSON:
+		return json.Unmarshal(rc.GetBody(), &dst)
+
+	case internal.MIMEMultipartPOSTForm:
+
+	default:
+
+	}
+	return nil
 }

@@ -5,11 +5,9 @@
 package main
 
 import (
-	"log"
 	"testing"
 )
 
-func TestExample(t *testing.T) {
-	a := []string{"c"}
-	log.Println(a[len(a)-1])
+func Benchmark_Test(b *testing.B) {
+
 }

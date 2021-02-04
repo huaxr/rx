@@ -7,12 +7,13 @@ package std
 import (
 	"bufio"
 	"bytes"
-	"github.com/huaxr/rx/internal"
-	"github.com/huaxr/rx/context/ctx"
 	"io"
 	"log"
 	"net"
 	"sync"
+
+	"github.com/huaxr/rx/context/ctx"
+	"github.com/huaxr/rx/internal"
 )
 
 var BtsPool = sync.Pool{
@@ -28,12 +29,12 @@ type WorkerPool struct {
 	connChannel chan net.Conn
 	handleErr   chan error
 	wg          *sync.WaitGroup
-	srv 		*stdServer
+	srv         *stdServer
 }
 
 func NewWorkerPool(size uint16, srv *stdServer) *WorkerPool {
 	wp := new(WorkerPool)
-	wp.handleErr = make(chan error, 1 << 10)
+	wp.handleErr = make(chan error, 1<<10)
 	go wp.handlerErr()
 	wp.size = size
 	wp.token = make(chan bool, size)
@@ -72,19 +73,17 @@ func (wp *WorkerPool) startWorkers() {
 		case con := <-wp.connChannel:
 			reader := bufio.NewReader(con)
 			var buffer bytes.Buffer
-			// add cancel here
+			// add time exceed cancel here
 			for {
 				var buf = BtsPool.Get().([]byte)
 				n, err := reader.Read(buf[:])
 				if n < internal.PieceSize || err == io.EOF {
-					// bug fix
+					// eat the last bite
+					buffer.Write(buf[:n])
+					BtsPool.Put(buf)
 					break
 				}
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				buffer.Write(buf)
+				buffer.Write(buf[:n])
 				BtsPool.Put(buf)
 			}
 

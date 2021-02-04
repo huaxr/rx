@@ -5,8 +5,9 @@
 package ctx
 
 import (
-	"github.com/huaxr/rx/internal"
 	"sync"
+
+	"github.com/huaxr/rx/internal"
 )
 
 type (
@@ -22,21 +23,17 @@ type (
 	}
 )
 
-var handlerSlice = make(map[int][]HandlerFunc)
-
-var groupHandlerSlice = make(map[string][]HandlerFunc)
-
 // copyStack copy the HandlerFunc from the handlerSlice.
 // For each request the has it's own stack to execute
-func copyStack(str string) (*stack){
-	slice, ok := handlerSlice[internal.CRC(str)]
-	if !ok || len(slice) == 0{
+func copyStack(str string) *stack {
+	router, ok := handlerSlice[internal.CRC(str)]
+	if !ok || len(router.handler) == 0 {
 		return nil
 	}
 
 	s := NewStack()
-	for l:=0; l<=len(slice)-1; l++ {
-		s.Push(slice[l])
+	for l := 0; l <= len(router.handler)-1; l++ {
+		s.Push(router.handler[l])
 	}
 	return s
 }

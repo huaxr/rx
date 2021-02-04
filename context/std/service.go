@@ -5,10 +5,12 @@
 package std
 
 import (
-	"github.com/huaxr/rx/internal"
 	"log"
 	"net"
 	"sync"
+
+	"github.com/huaxr/rx/context/ctx"
+	"github.com/huaxr/rx/internal"
 )
 
 // TcpSocket the raw socket
@@ -18,7 +20,7 @@ type stdServer struct {
 	// the channel of socket err, EOF .eg
 	acceptErr chan error
 	workers   *WorkerPool
-	wp *sync.WaitGroup
+	wp        *sync.WaitGroup
 	//handlers map[string][]ctx.HandlerFunc
 }
 
@@ -69,17 +71,16 @@ func (t *stdServer) startServer() {
 	t.workers.wg.Wait()
 }
 
-
 func NewStdServer(addr string) *stdServer {
 	srv := newServer("tcp", addr)
 	return srv
 }
 
 func (s *stdServer) Run() {
+	ctx.Print()
 	s.startServer()
 }
 
 func (s *stdServer) GetWorker() *WorkerPool {
 	return s.workers
 }
-
