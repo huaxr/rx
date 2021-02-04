@@ -4,11 +4,16 @@
 
 package ctx
 
+import "runtime"
+
 type Server interface {
 	Run()
 }
 
 func NewServer(mod string, addr string) Server {
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	switch mod {
 	case "std":
 		return NewStdServer(addr)

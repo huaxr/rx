@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/huaxr/rx/util"
+	"github.com/huaxr/rx/ctx/internal"
 
 	"go.uber.org/atomic"
 )
@@ -31,7 +31,7 @@ type ReqCxtI interface {
 	// Abort response with status
 	// setAbort can make the current flow stop.
 	// set the stop time & set the finished flag true
-	Abort(status int16, message string)
+	Abort(status int16, message interface{})
 	// Set into sync.map
 	Set(key string, val interface{})
 	// Get from sync.map
@@ -74,6 +74,24 @@ type requestContext struct {
 	stack *stack
 }
 
+var reqCtxPool = sync.Pool{
+	New: func() interface{} {
+		return &requestContext{
+			responseContext: &responseContext{
+				rspHeaders: make(map[string]interface{}),
+				rspBody:    []byte{},
+				body:       bytes.Buffer{},
+			},
+			reqHeaders: make(map[string]interface{}),
+		}
+	},
+}
+
+func putContext(rc *requestContext) {
+	rc.free()
+	reqCtxPool.Put(rc)
+}
+
 func (r *requestContext) getPath(real bool) string {
 	if real {
 		return r.path
@@ -94,6 +112,9 @@ func (r *requestContext) GetBody() []byte {
 }
 
 func (r *requestContext) GetClientAddr() string {
+	if r.clientAddr == nil {
+		return ""
+	}
 	return r.clientAddr.String()
 }
 
@@ -102,7 +123,14 @@ func (r *requestContext) setClientAddr(addr net.Addr) {
 	r.clientAddr = addr
 }
 
-func (r *requestContext) setAbort(status int16, message string) {
+func (r *requestContext) setAbort(status int16, message interface{}) {
+	r.status = status
+	switch message.(type) {
+	default:
+		r.responseContext.rspHeaders["Content-Type"] = internal.MIMEHTML
+	case map[string]interface{}:
+		r.responseContext.rspHeaders["Content-Type"] = internal.MIMEJSON
+	}
 	r.abortContext = NewAbortContext(status, message)
 	r.finish()
 }
@@ -122,7 +150,7 @@ func (r *requestContext) free() *requestContext {
 
 func wrapRequest(buffer []byte) *requestContext {
 	var err error
-	reqCtx := GetContext()
+	reqCtx := reqCtxPool.Get().(*requestContext)
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
@@ -212,7 +240,14 @@ func (rc *requestContext) execute() *responseContext {
 	for rc.stack.length > 0 {
 		// if the ctx abort by an Abort calling.
 		if rc.abortContext != nil || rc.finished.Load() {
+			//rc.stack.Pop()(rc)
 			rc.stack = nil
+			rc.finish()
+			rsp, err := json.Marshal(rc.abortContext.message)
+			if err != nil {
+				return nil
+			}
+			rc.responseContext.rspBody = rsp
 			return rc.responseContext
 		}
 		s := rc.stack.Pop()
@@ -251,7 +286,7 @@ func (rc *requestContext) getDefaultHandlerStack() *stack {
 		case status >= 100 && status <= 200:
 			return nil
 		default:
-			handlers := NewStack()
+			handlers := newStack()
 			handler, ok := defaultHANDLERS[status]
 			if !ok {
 				handlers.Push(func(ctx ReqCxtI) {
@@ -295,7 +330,7 @@ func (rc *requestContext) initStack() {
 	}
 	handles = copyStack(rc.getPath(false))
 	if handles == nil {
-		handles = NewStack()
+		handles = newStack()
 		handles.Push(defaultHANDLERS[404])
 	}
 	rc.stack = handles
@@ -311,15 +346,15 @@ func (rc *requestContext) GetQuery(key, dft string) string {
 func (rc *requestContext) ParseBody(dst interface{}) error {
 	contentType, ok := rc.reqHeaders["content-type"]
 	if !ok {
-		contentType = util.MIMEPlain
+		contentType = internal.MIMEPlain
 	}
 	switch contentType {
-	case util.MIMEPlain:
+	case internal.MIMEPlain:
 
-	case util.MIMEJSON:
+	case internal.MIMEJSON:
 		return json.Unmarshal(rc.GetBody(), &dst)
 
-	case util.MIMEMultipartPOSTForm:
+	case internal.MIMEMultipartPOSTForm:
 
 	default:
 
@@ -327,10 +362,6 @@ func (rc *requestContext) ParseBody(dst interface{}) error {
 	return nil
 }
 
-func (rsp *requestContext) Abort(status int16, message string) {
-	rsp.status = status
-	rsp.rspHeaders["Content-Type"] = util.MIMEHTML
-	// replace any bytes which already set.
-	rsp.rspBody = []byte(message)
+func (rsp *requestContext) Abort(status int16, message interface{}) {
 	rsp.setAbort(status, message)
 }

@@ -2,14 +2,13 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package util
+package internal
 
 const (
-	Concurrent = 1024
-
 	PieceSize = 1<<10 + 3
 
 	WorkerSize = 1 << 4
+	ServerSize = 1 << 2
 )
 
 const (

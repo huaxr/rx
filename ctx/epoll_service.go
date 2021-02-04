@@ -159,7 +159,7 @@ func (srv *loopServer) loopRead(c *conn) error {
 	}
 
 	reqContext := wrapRequest(c.in)
-	PutContext(reqContext)
+	putContext(reqContext)
 	reqContext.setClientAddr(c.connInfo)
 
 	res := reqContext.execute()

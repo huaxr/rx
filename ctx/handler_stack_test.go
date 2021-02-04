@@ -19,7 +19,7 @@ ok  	test/test9	9.776s*/
 var st *stack
 
 func Init() {
-	st = NewStack()
+	st = newStack()
 }
 
 func Benchmark_Push(b *testing.B) {

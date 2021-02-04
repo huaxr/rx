@@ -7,7 +7,7 @@ package ctx
 import (
 	"sync"
 
-	"github.com/huaxr/rx/util"
+	"github.com/huaxr/rx/ctx/internal"
 )
 
 type (
@@ -26,12 +26,12 @@ type (
 // copyStack copy the HandlerFunc from the handlerSlice.
 // For each request the has it's own stack to execute
 func copyStack(str string) *stack {
-	router, ok := handlerSlice[util.CRC(str)]
+	router, ok := handlerSlice[internal.CRC(str)]
 	if !ok || len(router.handler) == 0 {
 		return nil
 	}
 
-	s := NewStack()
+	s := newStack()
 	for l := 0; l <= len(router.handler)-1; l++ {
 		s.Push(router.handler[l])
 	}
@@ -40,7 +40,7 @@ func copyStack(str string) *stack {
 
 // NewStack return the new instance of stack.
 // when sync.Poll cache the stack may cause problem here.
-func NewStack() *stack {
+func newStack() *stack {
 	return &stack{nil, 0, &sync.RWMutex{}}
 }
 

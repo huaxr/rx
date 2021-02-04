@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/huaxr/rx/util"
+	"github.com/huaxr/rx/ctx/internal"
 )
 
 // TcpSocket the raw socket
@@ -19,8 +19,7 @@ type stdServer struct {
 	// the channel of socket err, EOF .eg
 	acceptErr chan error
 	workers   *WorkerPool
-	wp        *sync.WaitGroup
-	//handlers map[string][]ctx.HandlerFunc
+	wg        *sync.WaitGroup
 }
 
 func (t *stdServer) GetAddr() string {
@@ -47,7 +46,8 @@ func newServer(network string, addr string) *stdServer {
 			panic(err)
 		}
 		t.listener = listen
-		t.workers = NewWorkerPool(util.Concurrent, t)
+		t.wg = &sync.WaitGroup{}
+		t.workers = NewWorkerPool(t)
 	})
 	go t.handlerErr()
 	return t
@@ -56,18 +56,26 @@ func newServer(network string, addr string) *stdServer {
 
 func (t *stdServer) startServer() {
 	log.Println("start server on:", t.GetAddr())
-	go func() {
-		for {
-			rawConn, err := t.listener.Accept()
-			//_ = rawConn.SetReadDeadline(time.Time{})
-			if err != nil {
-				t.acceptErr <- err
-				continue
+	t.wg.Add(internal.ServerSize)
+	for i := internal.ServerSize; i > 0; i-- {
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			for {
+				rawConn, err := t.listener.Accept()
+				//_ = rawConn.SetReadDeadline(time.Time{})
+				if err != nil {
+					t.acceptErr <- err
+					continue
+				}
+				t.workers.connChannel <- rawConn
 			}
-			t.workers.PutConnPool(rawConn)
-		}
+		}(t.wg)
+	}
+	defer func() {
+		t.wg.Wait()
+		t.workers.wg.Wait()
 	}()
-	t.workers.wg.Wait()
+
 }
 
 func NewStdServer(addr string) *stdServer {

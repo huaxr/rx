@@ -11,7 +11,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/huaxr/rx/util"
+	"github.com/huaxr/rx/ctx/internal"
 )
 
 type RspCtxI interface {
@@ -55,13 +55,14 @@ func (res *responseContext) wrapResponseBody() {
 }
 
 func (res *responseContext) rspToBytes() []byte {
+	defer res.body.Reset()
 	res.wrapResponse()
 	return res.body.Bytes()
 }
 
 func (rsp *responseContext) JSON(status int16, response interface{}) {
 	rsp.status = status
-	rsp.rspHeaders["Content-Type"] = util.MIMEJSON
+	rsp.rspHeaders["Content-Type"] = internal.MIMEJSON
 	bits, err := json.Marshal(response)
 	if err != nil {
 		log.Println(err)
