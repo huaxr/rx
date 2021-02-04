@@ -42,17 +42,19 @@ group.Register("get", "user2", handler)
 ```go
 func handler(ctx ctx.ReqCxtI) {
 	log.Println("execute handler")
-	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "context": ctx.Get("user")})
+	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": ctx.Get("user")})
 }
 ```
 ---
 
-## Customized Response
+## Customized Abort
 - 自定义 abort
+- 当在handler context中调用此函数， 将直接以指定的 message 退出当前请求， 后续的栈中中间件将不再执行。如下所示，Next将handler压栈，但是不会再执行
 - 富化中 增加模板
 ```go
 ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {
-    ctx.Abort(404, "not exist")
+    ctx.Next(handler) // not execute
+    ctx.Abort(200, "Not Allowed")
 })
 ```
 ---
@@ -101,7 +103,7 @@ type PostBody struct {
 func handler5(ctx ctx.ReqCxtI) {
 	var post PostBody
 	err := ctx.ParseBody(&post)
-	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "context": post.Name})
+	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
 }
 ```
 

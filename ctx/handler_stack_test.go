@@ -16,7 +16,6 @@ Benchmark_Pop-4    	20000000	        75.5 ns/op	       0 B/op	       0 allocs/op
 PASS
 ok  	test/test9	9.776s*/
 
-
 var st *stack
 
 func Init() {

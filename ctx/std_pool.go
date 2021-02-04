@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package std
+package ctx
 
 import (
 	"bufio"
@@ -12,13 +12,12 @@ import (
 	"net"
 	"sync"
 
-	"github.com/huaxr/rx/context/ctx"
-	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/util"
 )
 
 var BtsPool = sync.Pool{
 	New: func() interface{} {
-		bys := make([]byte, internal.PieceSize)
+		bys := make([]byte, util.PieceSize)
 		return bys
 	},
 }
@@ -43,9 +42,9 @@ func NewWorkerPool(size uint16, srv *stdServer) *WorkerPool {
 		wp.token <- true
 	}
 	wp.connChannel = make(chan net.Conn)
-	wp.wg.Add(internal.WorkerSize)
+	wp.wg.Add(util.WorkerSize)
 	wp.srv = srv
-	for i := internal.WorkerSize; i > 0; i-- {
+	for i := util.WorkerSize; i > 0; i-- {
 		go wp.startWorkers()
 	}
 	return wp
@@ -77,7 +76,7 @@ func (wp *WorkerPool) startWorkers() {
 			for {
 				var buf = BtsPool.Get().([]byte)
 				n, err := reader.Read(buf[:])
-				if n < internal.PieceSize || err == io.EOF {
+				if n < util.PieceSize || err == io.EOF {
 					// eat the last bite
 					buffer.Write(buf[:n])
 					BtsPool.Put(buf)
@@ -87,14 +86,14 @@ func (wp *WorkerPool) startWorkers() {
 				BtsPool.Put(buf)
 			}
 
-			reqContext := ctx.WrapRequest(buffer.Bytes())
-			defer ctx.PutContext(reqContext)
+			reqContext := wrapRequest(buffer.Bytes())
+			defer PutContext(reqContext)
 			buffer.Reset()
 
 			// set the remoteAddr for logger usage
-			reqContext.SetClientAddr(con.RemoteAddr())
-			res := reqContext.Execute()
-			_, err := con.Write(res.RspToBytes())
+			reqContext.setClientAddr(con.RemoteAddr())
+			res := reqContext.execute()
+			_, err := con.Write(res.rspToBytes())
 			if err != nil {
 				log.Println("startWorkers error:", err)
 				_ = con.Close()

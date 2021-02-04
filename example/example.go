@@ -1,13 +1,12 @@
 package main
 
 import (
-	"github.com/huaxr/rx/context"
-	"github.com/huaxr/rx/context/ctx"
+	"github.com/huaxr/rx/ctx"
 )
 
 // std epoll
 func main() {
-	server := context.NewServer("std", "127.0.0.1:9999")
+	server := ctx.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
 
 	ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {

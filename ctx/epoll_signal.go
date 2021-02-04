@@ -2,11 +2,12 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package epoll
+package ctx
 
 import (
-	"go.uber.org/atomic"
 	"net"
+
+	"go.uber.org/atomic"
 )
 
 type Signal int

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package internal
+package util
 
 import (
 	"hash/crc32"
@@ -23,4 +23,3 @@ func CRC(s string) int {
 	}
 	return 0
 }
-

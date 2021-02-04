@@ -40,9 +40,9 @@ var defaultLogFormatter = func(param LogFormatterParams) string {
 	)
 }
 
-func Log(ctx ReqCxtI) {
-	start := ctx.StartTime()
-	end := ctx.StopTime()
+func Log(ctx *requestContext) {
+	start := ctx.startTime()
+	end := ctx.stopTime()
 	param := LogFormatterParams{}
 
 	param.TimeStamp = time.Now()
@@ -50,8 +50,8 @@ func Log(ctx ReqCxtI) {
 
 	param.ClientIP = ctx.GetClientAddr()
 	param.Method = ctx.GetMethod()
-	param.StatusCode = ctx.GetStatus()
-	param.Path = ctx.GetPath(true)
+	param.StatusCode = ctx.getRspStatus()
+	param.Path = ctx.getPath(true)
 
 	fmt.Fprint(DefaultWriter, defaultLogFormatter(param))
 }

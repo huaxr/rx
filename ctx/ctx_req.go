@@ -15,63 +15,42 @@ import (
 	"sync"
 	"time"
 
-	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/util"
 
 	"go.uber.org/atomic"
 )
 
 type ReqCxtI interface {
 	RspCtxI
-
-	// GetPath return the request query path.
-	GetPath(real bool) string
 	// GetHeaders
 	GetHeaders() map[string]interface{}
 	GetMethod() string
 	GetClientAddr() string
 	// GetBody return the request body bytes
 	GetBody() []byte
-	// SetClientAddr set the address for logger usage
-	SetClientAddr(addr net.Addr)
-	// Execute execute each HandlerFunc on stack or slice.
-	// stack HandlerFunc can using the dynamic push option
-	// to return a HandlerFunc to the stack peek and execute
-	// it when next pop.
-	Execute() RspCtxI
-
-	// SetAbort can make the current flow stop.
-	SetAbort(status int16, message string)
-
-	// Free when get ReqCxtI from sync.pool, clear the allocated map fields.
-	Free() ReqCxtI
-
-	// StartTime return the time when one ReqCxtI generated.
-	StartTime() time.Time
-	// Finished implements that the context was executed already.
-	Finished() bool
-
+	// Abort response with status
+	// setAbort can make the current flow stop.
+	// set the stop time & set the finished flag true
+	Abort(status int16, message string)
 	// Set into sync.map
 	Set(key string, val interface{})
 	// Get from sync.map
 	Get(key string) interface{}
 	// Push calling push when execute a HandlerFunc and push the next Handler
 	// to execute or jump to anther HandlerFunc to deal with the request.
-	Next(handlerFunc HandlerFunc)
+	Next(handlerFunc handlerFunc)
 
 	GetQuery(key, dft string) string
 	// ParseBody turn the body bytes to dst
 	ParseBody(dst interface{}) error
 }
 
-type AbortContext struct {
-	abortStatus int16
-	message     string
-}
+// RequestContext contains all the ctx when a req has triggered
+type requestContext struct {
+	*responseContext
+	// abort preStatus will not execute or generate the response handler
+	*abortContext
 
-// RequestContext contains all the context when a req has triggered
-type RequestContext struct {
-	//context.Context
-	ResponseContext
 	// method request method
 	method string
 	// path request location
@@ -80,8 +59,6 @@ type RequestContext struct {
 	clientAddr net.Addr
 	// time request time time.now()
 	time time.Time
-	// preStatus will not execute or generate the response handler
-	abort *AbortContext
 	// headers request header key-value
 	reqHeaders map[string]interface{}
 	// reqParameters the request raw query parse to map
@@ -91,60 +68,61 @@ type RequestContext struct {
 
 	flashStore *sync.Map
 
+	// abort will set the it true
 	finished *atomic.Bool
 	// stack record the executable func
 	stack *stack
 }
 
-func (r *RequestContext) GetPath(real bool) string {
+func (r *requestContext) getPath(real bool) string {
 	if real {
 		return r.path
 	}
 	return strings.ToLower(r.method) + "::" + r.path
 }
 
-func (r *RequestContext) GetHeaders() map[string]interface{} {
+func (r *requestContext) GetHeaders() map[string]interface{} {
 	return r.reqHeaders
 }
 
-func (r *RequestContext) GetMethod() string {
+func (r *requestContext) GetMethod() string {
 	return r.method
 }
 
-func (r *RequestContext) GetBody() []byte {
+func (r *requestContext) GetBody() []byte {
 	return r.reqBody.Bytes()
 }
 
-func (r *RequestContext) GetClientAddr() string {
+func (r *requestContext) GetClientAddr() string {
 	return r.clientAddr.String()
 }
 
-func (r *RequestContext) SetClientAddr(addr net.Addr) {
+// SetClientAddr set the address for logger usage
+func (r *requestContext) setClientAddr(addr net.Addr) {
 	r.clientAddr = addr
 }
 
-func (r *RequestContext) SetAbort(status int16, message string) {
-	r.abort = &AbortContext{
-		abortStatus: status,
-		message:     message,
-	}
+func (r *requestContext) setAbort(status int16, message string) {
+	r.abortContext = NewAbortContext(status, message)
+	r.finish()
 }
 
-func (r *RequestContext) IsAbort() bool {
-	return r.abort != nil
+func (r *requestContext) isAbort() bool {
+	return r.abortContext != nil
 }
 
-func (r *RequestContext) Free() ReqCxtI {
-	r.abort = nil
+// Free when get ReqCxtI from sync.pool, clear the allocated map fields.
+func (r *requestContext) free() *requestContext {
+	r.abortContext = nil
 	r.reqHeaders = map[string]interface{}{}
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
 	return r
 }
 
-func WrapRequest(buffer []byte) ReqCxtI {
+func wrapRequest(buffer []byte) *requestContext {
 	var err error
-	reqCtx := GetContext().(*RequestContext)
+	reqCtx := GetContext()
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
@@ -167,11 +145,11 @@ func WrapRequest(buffer []byte) ReqCxtI {
 	return reqCtx
 
 ABORT:
-	reqCtx.SetAbort(403, "Bad Request")
+	reqCtx.setAbort(403, "Bad Request")
 	return reqCtx
 }
 
-func (rc *RequestContext) wrapRequestHeader(header []byte) error {
+func (rc *requestContext) wrapRequestHeader(header []byte) error {
 	headerLines := bytes.Split(header, []byte("\r\n"))
 	if len(headerLines) == 0 {
 		return errors.New("headerLines invalid")
@@ -209,7 +187,7 @@ func (rc *RequestContext) wrapRequestHeader(header []byte) error {
 	return nil
 }
 
-func (rc *RequestContext) wrapRequestBody(body []byte) error {
+func (rc *requestContext) wrapRequestBody(body []byte) error {
 	var buffer bytes.Buffer
 	_, err := buffer.Write(body)
 	if err != nil {
@@ -219,26 +197,35 @@ func (rc *RequestContext) wrapRequestBody(body []byte) error {
 	return nil
 }
 
-func (rc *RequestContext) finish() {
+func (rc *requestContext) finish() {
 	rc.SetStopTime(time.Now())
 	rc.finished.Store(true)
 	Log(rc)
 }
 
-func (rc *RequestContext) Execute() RspCtxI {
+// execute each HandlerFunc on stack or slice.
+// stack HandlerFunc can using the dynamic push option
+// to return a HandlerFunc to the stack peek and execute
+// it when next pop.
+func (rc *requestContext) execute() *responseContext {
 	rc.initStack()
 	for rc.stack.length > 0 {
+		// if the ctx abort by an Abort calling.
+		if rc.abortContext != nil || rc.finished.Load() {
+			rc.stack = nil
+			return rc.responseContext
+		}
 		s := rc.stack.Pop()
 		s(rc)
 	}
 	rc.finish()
-	return &rc.ResponseContext
+	return rc.responseContext
 }
 
-func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc {
-	if rc.IsAbort() {
-		handlers := []HandlerFunc{}
-		status := rc.abort.abortStatus
+func (rc *requestContext) getDefaultHandlerSlice() []handlerFunc {
+	if rc.isAbort() {
+		handlers := []handlerFunc{}
+		status := rc.abortContext.abortStatus
 		switch {
 		case status >= 100 && status <= 199:
 			return nil
@@ -257,11 +244,11 @@ func (rc *RequestContext) GetDefaultHandlerSlice() []HandlerFunc {
 	return nil
 }
 
-func (rc *RequestContext) getDefaultHandlerStack() *stack {
-	if rc.IsAbort() {
-		status := rc.abort.abortStatus
+func (rc *requestContext) getDefaultHandlerStack() *stack {
+	if rc.isAbort() {
+		status := rc.abortContext.abortStatus
 		switch {
-		case status >= 100 && status <= 199:
+		case status >= 100 && status <= 200:
 			return nil
 		default:
 			handlers := NewStack()
@@ -279,34 +266,34 @@ func (rc *RequestContext) getDefaultHandlerStack() *stack {
 	return nil
 }
 
-func (rc *RequestContext) Set(key string, val interface{}) {
+func (rc *requestContext) Set(key string, val interface{}) {
 	rc.flashStore.Store(key, val)
 }
 
-func (rc *RequestContext) Get(key string) interface{} {
+func (rc *requestContext) Get(key string) interface{} {
 	val, _ := rc.flashStore.Load(key)
 	return val
 }
 
-func (rc *RequestContext) StartTime() time.Time {
+func (rc *requestContext) startTime() time.Time {
 	return rc.time
 }
 
-func (rc *RequestContext) Finished() bool {
+func (rc *requestContext) Finished() bool {
 	return rc.finished.Load()
 }
 
-func (rc *RequestContext) Next(handlerFunc HandlerFunc) {
+func (rc *requestContext) Next(handlerFunc handlerFunc) {
 	rc.stack.Push(handlerFunc)
 }
 
-func (rc *RequestContext) initStack() {
+func (rc *requestContext) initStack() {
 	handles := rc.getDefaultHandlerStack()
 	if handles != nil {
 		rc.stack = handles
 		return
 	}
-	handles = copyStack(rc.GetPath(false))
+	handles = copyStack(rc.getPath(false))
 	if handles == nil {
 		handles = NewStack()
 		handles.Push(defaultHANDLERS[404])
@@ -314,28 +301,36 @@ func (rc *RequestContext) initStack() {
 	rc.stack = handles
 }
 
-func (rc *RequestContext) GetQuery(key, dft string) string {
+func (rc *requestContext) GetQuery(key, dft string) string {
 	if val := rc.reqParameters.Get(key); val != "" {
 		return val
 	}
 	return dft
 }
 
-func (rc *RequestContext) ParseBody(dst interface{}) error {
+func (rc *requestContext) ParseBody(dst interface{}) error {
 	contentType, ok := rc.reqHeaders["content-type"]
 	if !ok {
-		contentType = internal.MIMEPlain
+		contentType = util.MIMEPlain
 	}
 	switch contentType {
-	case internal.MIMEPlain:
+	case util.MIMEPlain:
 
-	case internal.MIMEJSON:
+	case util.MIMEJSON:
 		return json.Unmarshal(rc.GetBody(), &dst)
 
-	case internal.MIMEMultipartPOSTForm:
+	case util.MIMEMultipartPOSTForm:
 
 	default:
 
 	}
 	return nil
+}
+
+func (rsp *requestContext) Abort(status int16, message string) {
+	rsp.status = status
+	rsp.rspHeaders["Content-Type"] = util.MIMEHTML
+	// replace any bytes which already set.
+	rsp.rspBody = []byte(message)
+	rsp.setAbort(status, message)
 }

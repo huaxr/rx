@@ -2,16 +2,16 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package epoll
+package ctx
 
 import (
-	"github.com/huaxr/rx/context/ctx"
-	"go.uber.org/atomic"
 	"log"
 	"net"
 	"os"
 	"sync"
 	"syscall"
+
+	"go.uber.org/atomic"
 )
 
 type loopServer struct {
@@ -158,12 +158,12 @@ func (srv *loopServer) loopRead(c *conn) error {
 		return nil
 	}
 
-	reqContext := ctx.WrapRequest(c.in)
-	ctx.PutContext(reqContext)
-	reqContext.SetClientAddr(c.connInfo)
+	reqContext := wrapRequest(c.in)
+	PutContext(reqContext)
+	reqContext.setClientAddr(c.connInfo)
 
-	res := reqContext.Execute()
-	c.out = res.RspToBytes()
+	res := reqContext.execute()
+	c.out = res.rspToBytes()
 
 	if len(c.out) != 0 || c.signal != None {
 		srv.poll.ChangeRW(c.sock)
@@ -181,6 +181,6 @@ func (srv *loopServer) Close() {
 	_ = srv.sockFile.Close()
 }
 
-func (srv *loopServer) Use(handlerFunc ...ctx.HandlerFunc) {
+func (srv *loopServer) Use(handlerFunc ...handlerFunc) {
 
 }

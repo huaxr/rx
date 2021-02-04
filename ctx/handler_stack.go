@@ -7,7 +7,7 @@ package ctx
 import (
 	"sync"
 
-	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/util"
 )
 
 type (
@@ -18,7 +18,7 @@ type (
 	}
 
 	node struct {
-		value HandlerFunc
+		value handlerFunc
 		prev  *node
 	}
 )
@@ -26,7 +26,7 @@ type (
 // copyStack copy the HandlerFunc from the handlerSlice.
 // For each request the has it's own stack to execute
 func copyStack(str string) *stack {
-	router, ok := handlerSlice[internal.CRC(str)]
+	router, ok := handlerSlice[util.CRC(str)]
 	if !ok || len(router.handler) == 0 {
 		return nil
 	}
@@ -50,7 +50,7 @@ func (this *stack) Len() int {
 }
 
 // Peek View the top item on the stack
-func (this *stack) Peek() HandlerFunc {
+func (this *stack) Peek() handlerFunc {
 	if this.length == 0 {
 		return nil
 	}
@@ -58,7 +58,7 @@ func (this *stack) Peek() HandlerFunc {
 }
 
 // Pop the top item of the stack and return it
-func (this *stack) Pop() HandlerFunc {
+func (this *stack) Pop() handlerFunc {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	if this.length == 0 {
@@ -71,7 +71,7 @@ func (this *stack) Pop() HandlerFunc {
 }
 
 // Push a value onto the top of the stack
-func (this *stack) Push(value HandlerFunc) {
+func (this *stack) Push(value handlerFunc) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	n := &node{value, this.top}

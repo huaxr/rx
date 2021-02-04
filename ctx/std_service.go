@@ -2,15 +2,14 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package std
+package ctx
 
 import (
 	"log"
 	"net"
 	"sync"
 
-	"github.com/huaxr/rx/context/ctx"
-	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/util"
 )
 
 // TcpSocket the raw socket
@@ -48,7 +47,7 @@ func newServer(network string, addr string) *stdServer {
 			panic(err)
 		}
 		t.listener = listen
-		t.workers = NewWorkerPool(internal.Concurrent, t)
+		t.workers = NewWorkerPool(util.Concurrent, t)
 	})
 	go t.handlerErr()
 	return t
@@ -77,7 +76,7 @@ func NewStdServer(addr string) *stdServer {
 }
 
 func (s *stdServer) Run() {
-	ctx.Print()
+	Print()
 	s.startServer()
 }
 

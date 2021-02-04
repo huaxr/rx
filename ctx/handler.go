@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/util"
 )
 
-type HandlerFunc func(ctx ReqCxtI)
+type handlerFunc func(ctx ReqCxtI)
 
 type router struct {
-	handler []HandlerFunc
+	handler []handlerFunc
 	url     string
 	method  string
 }
@@ -33,7 +33,7 @@ var defaultSTATUS = map[int16]string{
 	500: "Internal server error",
 }
 
-var defaultHANDLERS = map[int16]HandlerFunc{
+var defaultHANDLERS = map[int16]handlerFunc{
 	404: func(ctx ReqCxtI) {
 		ctx.Abort(404, defaultSTATUS[404])
 	},
@@ -45,19 +45,19 @@ var defaultHANDLERS = map[int16]HandlerFunc{
 	},
 }
 
-func SetDefaultHandler(status int16, handler HandlerFunc) {
+func SetDefaultHandler(status int16, handler handlerFunc) {
 	defaultHANDLERS[status] = handler
 }
 
-func Register(method, path string, handlerFuncs ...HandlerFunc) {
-	var slice []HandlerFunc
+func Register(method, path string, handlerFuncs ...handlerFunc) {
+	var slice []handlerFunc
 	for l := len(handlerFuncs) - 1; l >= 0; l-- {
 		slice = append(slice, handlerFuncs[l])
 	}
 	if strings.HasSuffix(path, "/") {
 		path = path[:len(path)-1]
 	}
-	p := internal.CRC(fmt.Sprintf("%s::", method) + path)
+	p := util.CRC(fmt.Sprintf("%s::", method) + path)
 	r := new(router)
 	r.handler = slice
 	r.url = path

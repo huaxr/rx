@@ -10,10 +10,10 @@ import (
 
 type g struct {
 	path     string
-	handlers []HandlerFunc
+	handlers []handlerFunc
 }
 
-func Group(path string, handlerFuncs ...HandlerFunc) *g {
+func Group(path string, handlerFuncs ...handlerFunc) *g {
 	g := new(g)
 	g.handlers = handlerFuncs
 
@@ -28,12 +28,12 @@ func Group(path string, handlerFuncs ...HandlerFunc) *g {
 	return g
 }
 
-func (g *g) Register(method, path string, handlerFuncs ...HandlerFunc) {
+func (g *g) Register(method, path string, handlerFuncs ...handlerFunc) {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 	url := g.path + path
-	handlers := []HandlerFunc{}
+	handlers := []handlerFunc{}
 	handlers = append(handlers, g.handlers...)
 	handlers = append(handlers, handlerFuncs...)
 	Register(method, url, handlers...)
