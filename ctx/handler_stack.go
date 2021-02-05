@@ -32,7 +32,7 @@ func copyStack(str string) *stack {
 	}
 
 	s := newStack()
-	for l := 0; l <= len(router.handler)-1; l++ {
+	for l := len(router.handler) - 1; l >= 0; l-- {
 		s.Push(router.handler[l])
 	}
 	return s

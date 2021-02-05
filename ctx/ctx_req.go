@@ -22,6 +22,8 @@ import (
 
 type ReqCxtI interface {
 	RspCtxI
+	AbortI
+	StrategyI
 	// GetHeaders
 	GetHeaders() map[string]interface{}
 	GetMethod() string
@@ -50,6 +52,7 @@ type requestContext struct {
 	*responseContext
 	// abort preStatus will not execute or generate the response handler
 	*abortContext
+	*strategyContext
 
 	// method request method
 	method string
@@ -131,12 +134,12 @@ func (r *requestContext) setAbort(status int16, message interface{}) {
 	case map[string]interface{}:
 		r.responseContext.rspHeaders["Content-Type"] = internal.MIMEJSON
 	}
-	r.abortContext = NewAbortContext(status, message)
+	r.abortContext = r.NewAbort(status, message)
 	r.finish()
 }
 
 func (r *requestContext) isAbort() bool {
-	return r.abortContext != nil
+	return r.abortContext != nil || r.finished.Load()
 }
 
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
@@ -154,6 +157,11 @@ func wrapRequest(buffer []byte) *requestContext {
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
+	// open the strategy here. init the strategyContext fields.
+	// in order to avoiding the nil pointer.
+	// consider of the performance, it should set a switch to
+	// resolve whether open it by default.
+	reqCtx.strategyContext = open()
 
 	headerAndBody := bytes.Split(buffer, []byte("\r\n\r\n"))
 	if len(headerAndBody) != 2 {
@@ -226,33 +234,58 @@ func (rc *requestContext) wrapRequestBody(body []byte) error {
 }
 
 func (rc *requestContext) finish() {
-	rc.SetStopTime(time.Now())
-	rc.finished.Store(true)
-	Log(rc)
+	if !rc.finished.Load() {
+		rc.SetStopTime(time.Now())
+		rc.finished.Store(true)
+		Log(rc)
+	}
 }
 
-// execute each HandlerFunc on stack or slice.
-// stack HandlerFunc can using the dynamic push option
-// to return a HandlerFunc to the stack peek and execute
-// it when next pop.
+func (rc *requestContext) checkAbort() bool {
+	if rc.isAbort() {
+		rc.stack = nil
+		rc.strategyContext = nil
+		rc.responseContext.rspBody = rc.abortContext.GetAbortMessage()
+		return true
+	}
+	return false
+}
+
+// execute each HandlerFunc on stack which is a dynamically
+// choice for your logic flow. stack HandlerFunc can using
+// the dynamic push option to return a HandlerFunc to the
+// stack peek and execute it when next pop.
 func (rc *requestContext) execute() *responseContext {
 	rc.initStack()
 	for rc.stack.length > 0 {
-		// if the ctx abort by an Abort calling.
-		if rc.abortContext != nil || rc.finished.Load() {
-			//rc.stack.Pop()(rc)
-			rc.stack = nil
-			rc.finish()
-			rsp, err := json.Marshal(rc.abortContext.message)
-			if err != nil {
-				return nil
+		if rc.strategyContext != nil && rc.openStrategy.Load() {
+			select {
+			case <-rc.timeout:
+				rc.handleTimeOut(rc)
+				break
+			default:
+				// if the ctx abort by an Abort calling.
+				if rc.checkAbort() {
+					return rc.responseContext
+				}
+				rc.stack.Pop()(rc)
+
+				if rc.ttl.Load() == 0 {
+					rc.handleTTL(rc)
+					break
+				}
+				// stack execute once. ttl -= 1
+				rc.decTTL()
 			}
-			rc.responseContext.rspBody = rsp
-			return rc.responseContext
+		} else {
+			// if the ctx abort by an Abort calling.
+			if rc.checkAbort() {
+				return rc.responseContext
+			}
+			rc.stack.Pop()(rc)
 		}
-		s := rc.stack.Pop()
-		s(rc)
 	}
+	rc.checkAbort()
 	rc.finish()
 	return rc.responseContext
 }
@@ -312,10 +345,6 @@ func (rc *requestContext) Get(key string) interface{} {
 
 func (rc *requestContext) startTime() time.Time {
 	return rc.time
-}
-
-func (rc *requestContext) Finished() bool {
-	return rc.finished.Load()
 }
 
 func (rc *requestContext) Next(handlerFunc handlerFunc) {

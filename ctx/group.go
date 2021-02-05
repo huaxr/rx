@@ -5,7 +5,7 @@
 package ctx
 
 import (
-	"strings"
+	"github.com/huaxr/rx/ctx/internal"
 )
 
 type GroupI interface {
@@ -14,52 +14,60 @@ type GroupI interface {
 }
 
 type g struct {
-	path     string
-	handlers []handlerFunc
-	pre, next 	*g
+	path      string
+	handlers  []handlerFunc
+	pre, next *g
 }
 
 func Group(path string, handlerFuncs ...handlerFunc) GroupI {
 	g := new(g)
 	g.handlers = handlerFuncs
+	// pre equals nil === root
 	g.pre = nil
 	g.next = nil
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	if strings.HasSuffix(path, "/") {
-		path = path[:len(path)-1]
-	}
+	path = internal.CheckPath(path)
 	g.path = path
 	return g
 }
 
-func (gp *g) Group(path string, handlerFuncs ...handlerFunc) GroupI{
+func (gp *g) Group(path string, handlerFuncs ...handlerFunc) GroupI {
 	g := new(g)
 	g.handlers = handlerFuncs
+	g.path = path
 	g.pre = gp
-	g.next = nil
+	// for search
+	gp.next = g
 	return g
 }
-
 
 func (g *g) Register(method, path string, handlerFuncs ...handlerFunc) {
 	// when the previous g exist. which means the router has it's
 	// group parent may contains handlers to be execute first.
 	var preHandlers []handlerFunc
 	var prePath string
-	for g.pre != nil {
-		p := g.pre
-		prePath += p.path
-		preHandlers = append(preHandlers, p.handlers...)
-		p = p.pre
+
+	root := g.pre
+	if root != nil {
+		// find the root
+		for root.pre != nil {
+			root = root.pre
+		}
+		for root.next != nil {
+			root.path = internal.CheckPath(root.path)
+			prePath += root.path
+			preHandlers = append(preHandlers, root.handlers...)
+			root = root.next
+		}
 	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
+
+	path = internal.CheckPath(path)
+	g.path = internal.CheckPath(g.path)
+	prePath = internal.CheckPath(prePath)
+
 	url := prePath + g.path + path
+
 	handlers := []handlerFunc{}
+	handlers = append(handlers, preHandlers...)
 	handlers = append(handlers, g.handlers...)
 	handlers = append(handlers, handlerFuncs...)
 	Register(method, url, handlers...)

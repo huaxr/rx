@@ -1,42 +1,46 @@
 package main
 
 import (
-	"github.com/huaxr/rx/ctx"
 	"log"
 	"time"
+
+	"github.com/huaxr/rx/ctx"
 )
 
-func handler(ctx ctx.ReqCxtI) {
+func handler1(ctx ctx.ReqCxtI) {
+	ctx.SetTimeOut(1 * time.Second)
+	ctx.SetTTL(4)
 	log.Println("execute handler1")
 }
 
 func handler2(ctx ctx.ReqCxtI) {
+	time.Sleep(999 * time.Millisecond)
 	log.Println("execute handler2")
 }
 
 func handler3(ctx ctx.ReqCxtI) {
 	log.Println("execute handler3")
-	ctx.Set("a", []string{"a", "b", "c"})
-	ctx.Next(handler4)
-	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": "xxxxxx"})
-}
-
-func handler4(ctx ctx.ReqCxtI) {
-	log.Println("execute handler4")
 }
 
 type PostBody struct {
 	Name string `json:"name"`
 }
 
-func handler5(ctx ctx.ReqCxtI) {
-	log.Println(string(ctx.GetBody()))
+func last(ctx ctx.ReqCxtI) {
 	var post PostBody
 	err := ctx.ParseBody(&post)
 	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
-	log.Println("execute handler5", err, post.Name)
-	ctx.Next(handler)
+	log.Println("execute last", err, post.Name)
+	//ctx.Next(handler3)
 	//ctx.Abort(200, "sorry")
+}
+
+func handler4(ctx ctx.ReqCxtI) {
+	log.Println("execute handler4")
+}
+
+func handler5(ctx ctx.ReqCxtI) {
+	log.Println("execute handler5")
 }
 
 // std epoll
@@ -48,16 +52,15 @@ func main() {
 		ctx.Abort(404, "not exist")
 	})
 
-	group := ctx.Group("/api/auth", handler4, handler2)
-	group.Register("get", "/user", handler)
-	group.Register("get", "/user2", handler)
+	group := ctx.Group("/v1", handler1)
+	group.Register("get", "ddd", handler2)
 	// 递归组
-	sub := group.Group("/v2", handler)
-	sub.Register("get", "/la", handler)
-	sub2 := sub.Group("/v3", handler)
-	sub2.Register("get", "/la", handler)
+	sub := group.Group("/v2", handler2, handler3)
+	sub.Register("get", "/aaa", handler3)
 
+	sub2 := sub.Group("/v3", handler4, handler5)
+	sub2.Register("get", "/eee", last)
 
-	ctx.Register("get", "/aaa", handler3, handler2, handler)
-	ctx.Register("post", "/bbb", handler5)
+	ctx.Register("post", "/ccc", handler1, handler2, handler4)
+	ctx.Register("get", "/ccc", handler1, handler2, handler4)
 }

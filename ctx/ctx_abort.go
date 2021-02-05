@@ -4,12 +4,34 @@
 
 package ctx
 
+import (
+	"encoding/json"
+	"log"
+)
+
 type AbortI interface {
+	// GetMessage return the abort response bytes
+	GetAbortMessage() []byte
+	NewAbort(status int16, message interface{}) *abortContext
 }
 
 type abortContext struct {
 	abortStatus int16
 	message     interface{}
+}
+
+func (ac *abortContext) GetAbortMessage() []byte {
+	switch ac.message.(type) {
+	case string:
+		return []byte(ac.message.(string))
+	default:
+		bs, err := json.Marshal(ac.message)
+		if err != nil {
+			log.Println("err when marshal the abort context")
+			return nil
+		}
+		return bs
+	}
 }
 
 var defaultSTATUS = map[int16]string{
@@ -30,9 +52,13 @@ var defaultHANDLERS = map[int16]handlerFunc{
 	},
 }
 
-func NewAbortContext(status int16, message interface{}) *abortContext {
+func (ac *abortContext) NewAbort(status int16, message interface{}) *abortContext {
 	return &abortContext{
 		abortStatus: status,
 		message:     message,
 	}
+}
+
+func SetDefaultHandler(status int16, handler handlerFunc) {
+	defaultHANDLERS[status] = handler
 }
