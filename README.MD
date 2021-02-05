@@ -8,6 +8,7 @@ RX is a dynamic configurable and assemble web framework based on Go.
 - [Customized Group](#Customized-Group)
 - [Customized Strategy](#Customized-Strategy)
 - [Customized Response](#Customized-Response)
+- [Asynchronous Router](#Asynchronous-Router)
 - [Customized Abort](#Customized-abort)
 - [Context Transfer](#Context-Transfer)
 - [Epoll Kqueue](#Epoll-Kqueue)
@@ -65,16 +66,45 @@ ctx.Register("get", "/ccc", handler1, handler2, handler4)
   - 兜底策略：
   - 降级策略：
   - 其它:
-- 例如: 如下 group 组注册了 handler1 处理， 其下所有注册的路由都将采取该策略来初始化自己的请求上下文。
+- 样例1: 如下 group 组注册了 handler1 处理， 其下所有注册的路由都将采取该策略来初始化自己的请求上下文。
+- 样例2: 使用 注册接口注册一个自定义的处理策略 c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4})
 ```go
-func handler1(ctx ctx.ReqCxtI) {
-	ctx.SetTimeOut(1 * time.Second)
-	ctx.SetTTL(4)
+func handler1(c ctx.ReqCxtI) {
+	c.SetTimeOut(1 * time.Second)
+	c.SetTTL(4)
 	log.Println("execute handler1")
+	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4})
 }
 
+
 group := ctx.Group("/v1", handler1)
+// /v1/api 路由若1秒内完成，则退出并返回， 若执行了四次handler，则退出返回
+group.Register("get", "api", handler2)
 ```
+---
+## Asynchronous Router
+- 完美支持异步路由！ 再不用担心写异步逻辑了！ 全部交给RX， 配合自定义策略进行功能化拓展！ 
+- 样例:
+```go
+func handler1(c ctx.ReqCxtI) {
+	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4, Timeout: 2 * time.Second, Async: true})
+}
+
+func handler2(c ctx.ReqCxtI) {
+	// 使用异步来标识异步处理逻辑
+	// 阻塞5秒钟
+	time.Sleep(5 * time.Second)
+	log.Println("execute handler2")
+}
+// 执行如下 
+group := ctx.Group("/v1", handler1, handler2)
+group.Register("get", "ddd", myhandler)
+
+当使用 RegisterStrategy 注册自定义策略绑定到某个Group上， 若在某个handler有延迟逻辑，使用异步可以轻便的让
+超时逻辑得以执行！ 
+```
+
+
 ---
 ## Customized Response
 - 自定义 response

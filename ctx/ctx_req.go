@@ -45,6 +45,9 @@ type ReqCxtI interface {
 	GetQuery(key, dft string) string
 	// ParseBody turn the body bytes to dst
 	ParseBody(dst interface{}) error
+
+	// RegisterStrategy register the customized strategy
+	RegisterStrategy(strategy *StrategyContext)
 }
 
 // RequestContext contains all the ctx when a req has triggered
@@ -52,7 +55,7 @@ type requestContext struct {
 	*responseContext
 	// abort preStatus will not execute or generate the response handler
 	*abortContext
-	*strategyContext
+	*StrategyContext
 
 	// method request method
 	method string
@@ -75,6 +78,10 @@ type requestContext struct {
 	finished *atomic.Bool
 	// stack record the executable func
 	stack *stack
+	// whether open strategyContext in this context
+	// when calling RegisterStrategy, this flag will
+	// turn to true.
+	openStrategy atomic.Bool
 }
 
 var reqCtxPool = sync.Pool{
@@ -144,10 +151,14 @@ func (r *requestContext) isAbort() bool {
 
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
 func (r *requestContext) free() *requestContext {
-	r.abortContext = nil
+	//r.abortContext = nil
+	// if the openStrategy did not set false, it will trigger nil pointer
+	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
 	r.reqHeaders = map[string]interface{}{}
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
+	r.openStrategy.Store(false)
+	//r.StrategyContext = openDefaultStrategy()
 	return r
 }
 
@@ -157,11 +168,6 @@ func wrapRequest(buffer []byte) *requestContext {
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
-	// open the strategy here. init the strategyContext fields.
-	// in order to avoiding the nil pointer.
-	// consider of the performance, it should set a switch to
-	// resolve whether open it by default.
-	reqCtx.strategyContext = open()
 
 	headerAndBody := bytes.Split(buffer, []byte("\r\n\r\n"))
 	if len(headerAndBody) != 2 {
@@ -243,45 +249,88 @@ func (rc *requestContext) finish() {
 
 func (rc *requestContext) checkAbort() bool {
 	if rc.isAbort() {
-		rc.stack = nil
-		rc.strategyContext = nil
 		rc.responseContext.rspBody = rc.abortContext.GetAbortMessage()
 		return true
 	}
 	return false
 }
 
+func (rcx *requestContext) asyncExecute() chan bool {
+	// response data received
+	retCh := make(chan bool, 1)
+
+	go func(rc *requestContext) {
+		for !rc.isAbort() && rc.stack.length > 0 {
+			//rc.checkAbort()
+			// any response here
+			if len(rc.rspBody) > 0 && rc.status != 0 {
+				retCh <- true
+				return
+			}
+
+			rc.stack.Pop()(rc)
+			// handle ttl here
+			if rc.Ttl == 0 {
+				rc.handleTTL(rc)
+				retCh <- true
+				return
+			}
+			// stack execute once. ttl -= 1
+			rc.decTTL()
+		}
+	}(rcx)
+
+	return retCh
+}
+
+// the core handler invoke and trigger some events in each handler.
 // execute each HandlerFunc on stack which is a dynamically
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
 // stack peek and execute it when next pop.
 func (rc *requestContext) execute() *responseContext {
 	rc.initStack()
-	for rc.stack.length > 0 {
-		if rc.strategyContext != nil && rc.openStrategy.Load() {
-			select {
-			case <-rc.timeout:
-				rc.handleTimeOut(rc)
-				break
-			default:
-				// if the ctx abort by an Abort calling.
-				if rc.checkAbort() {
-					return rc.responseContext
-				}
-				rc.stack.Pop()(rc)
-
-				if rc.ttl.Load() == 0 {
-					rc.handleTTL(rc)
+	for !rc.isAbort() && rc.stack.length > 0 {
+		// using strategy. check every time when pop stack.
+		if rc.openStrategy.Load() {
+			if rc.Async {
+				async := rc.asyncExecute()
+				select {
+				case <-async:
+					// do nothing.
+				case <-rc.timeoutSignal:
+					rc.handleTimeOut(rc)
+					close(async)
 					break
 				}
-				// stack execute once. ttl -= 1
-				rc.decTTL()
+			} else {
+				select {
+				case <-rc.timeoutSignal:
+					rc.handleTimeOut(rc)
+					break
+
+				default:
+					// if the ctx abort by an Abort calling.
+					//if rc.checkAbort() {
+					//	return rc.responseContext
+					//}
+					h := rc.stack.Pop()
+					h(rc)
+
+					// handle ttl here
+					if rc.Ttl == 0 {
+						rc.handleTTL(rc)
+						break
+					}
+					// stack execute once. ttl -= 1
+					rc.decTTL()
+				}
 			}
 		} else {
 			// if the ctx abort by an Abort calling.
-			if rc.checkAbort() {
-				return rc.responseContext
-			}
+			//if rc.checkAbort() {
+			//	return rc.responseContext
+			//}
 			rc.stack.Pop()(rc)
 		}
 	}
@@ -391,6 +440,19 @@ func (rc *requestContext) ParseBody(dst interface{}) error {
 	return nil
 }
 
-func (rsp *requestContext) Abort(status int16, message interface{}) {
-	rsp.setAbort(status, message)
+func (rc *requestContext) Abort(status int16, message interface{}) {
+	rc.setAbort(status, message)
+}
+
+func (rc *requestContext) RegisterStrategy(strategy *StrategyContext) {
+	if strategy == nil {
+		strategy = openDefaultStrategy()
+	} else {
+		strategy.wrapDefault()
+	}
+
+	// when set the strategy, init the timeout chan
+	strategy.timeoutSignal = time.After(strategy.Timeout)
+	rc.openStrategy.Store(true)
+	rc.StrategyContext = strategy
 }

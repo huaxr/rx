@@ -6,60 +6,80 @@ package ctx
 
 import (
 	"time"
-
-	"go.uber.org/atomic"
 )
 
 type StrategyI interface {
 	SetTimeOut(t time.Duration)
 	SetTTL(t int32)
+	SetAsync(t bool)
 }
 
-type strategyContext struct {
+// strategy is under developing now, it functions will enhanced later
+type StrategyContext struct {
 	// time to live, stack execute profundity.
-	ttl atomic.Int32
+	Ttl int32
+	// execute timeout
+	Timeout time.Duration
+	// set Async identification to inform program to execute
+	// the method by asynchronous
+	Async bool
 
-	timeout <-chan time.Time
-
-	panic handlerFunc
-
-	openStrategy atomic.Bool
+	timeoutSignal <-chan time.Time
 }
 
-// open return the reqCtx field strategyContext
-func open() *strategyContext {
-	s := new(strategyContext)
-	s.openStrategy.Store(false)
-	s.timeout = make(<-chan time.Time)
-	s.ttl.Store(-1)
+// openDefaultStrategy open the default strategy here.
+// init the strategyContext fields in order to avoiding the nil pointer.
+// consider of the performance, return the reqCtx field strategyContext.
+// you can use c.RegisterStrategy(&ctx.StrategyContext{Timeout: 1 * time.Second, Ttl: 4})
+// to start a StrategyContext on your own.
+
+// default Timeout never expire.
+func openDefaultStrategy() *StrategyContext {
+	s := new(StrategyContext)
+	s.timeoutSignal = make(<-chan time.Time)
+	s.Timeout = 0xff * time.Hour
+	s.Ttl = -1
+	s.Async = false
 	return s
 }
 
-func (s *strategyContext) SetTimeOut(t time.Duration) {
-	s.openStrategy.Store(true)
-	s.timeout = time.After(t)
+// wrap the StrategyContext with a default never reached value.
+func (s *StrategyContext) wrapDefault() {
+	if s.Ttl <= 0 {
+		s.Ttl = 0xff
+	}
+	if s.Timeout <= 0 {
+		s.Timeout = 0xff * time.Hour
+	}
+}
+
+func (s *StrategyContext) SetTimeOut(t time.Duration) {
+	s.timeoutSignal = time.After(t)
 }
 
 // SetTTL the stack is inc 1 to the t set
-func (s *strategyContext) SetTTL(t int32) {
-	s.openStrategy.Store(true)
+func (s *StrategyContext) SetTTL(t int32) {
 	if t < 0 {
 		return
 	}
-	s.ttl.Store(t + 1)
+	s.Ttl = t + 1
 }
 
-func (s *strategyContext) decTTL() {
-	if s.ttl.Load() == 0 {
+func (s *StrategyContext) SetAsync(t bool) {
+	s.Async = t
+}
+
+func (s *StrategyContext) decTTL() {
+	if s.Ttl == 0 {
 		return
 	}
-	s.ttl.Dec()
+	s.Ttl -= 1
 }
 
-func (s *strategyContext) handleTimeOut(rc *requestContext) {
+func (s *StrategyContext) handleTimeOut(rc *requestContext) {
 	rc.setAbort(200, "this router timeout")
 }
 
-func (s *strategyContext) handleTTL(rc *requestContext) {
+func (s *StrategyContext) handleTTL(rc *requestContext) {
 	rc.setAbort(200, "this router ttl out")
 }
