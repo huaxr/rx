@@ -10,7 +10,6 @@ import (
 	"errors"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -265,28 +264,30 @@ func (rc *RequestContext) checkAbort() bool {
 	return false
 }
 
-func (rcx *RequestContext) asyncExecute() {
+func (rc *RequestContext) asyncExecute(async chan bool) {
 	// response data received
-	go func(rc *RequestContext) {
-		for !rc.isAbort() && rc.stack.length > 0 {
-			//rc.checkAbort()
-			// any response here
-			if len(rc.rspBody) > 0 && rc.status != 0 {
-				rcx.asyncSignal <- true
-				return
-			}
+	for !rc.isAbort() && rc.stack.length > 0 {
+		// demanding processing should be using handlerFunc() to return
+		// a chan bool to notify whether this stack has been down.
+		rc.stack.Pop()(rc)
 
-			rc.stack.Pop()(rc)
-			// handle ttl here
-			if rc.Ttl == 0 {
-				rc.handleTTL(rc)
-				rcx.asyncSignal <- true
-				return
-			}
-			// stack execute once. ttl -= 1
-			rc.decTTL()
+		if len(rc.rspBody) > 0 && rc.status != 0 {
+			// if asyncSignal equals nil, this goroutine
+			// will perpetual block eternal die, which will
+			// cause memory leak, using runtime.NumGoroutine
+			// to debug this.
+			async <- true
+			return
 		}
-	}(rcx)
+		// handle ttl here
+		if rc.Ttl == 0 {
+			rc.handleTTL(rc)
+			async <- true
+			return
+		}
+		// stack execute once. ttl -= 1
+		rc.decTTL()
+	}
 }
 
 // the core handler invoke and trigger some events in each handler.
@@ -297,53 +298,45 @@ func (rcx *RequestContext) asyncExecute() {
 func (rc *RequestContext) execute() (response *responseContext) {
 	defer func() {
 		if r := recover(); r != nil {
-			os.Stderr.Write(internal.PrintStack())
-			rc.handlePanic(rc)
-			rc.checkAbort()
-			response =  rc.responseContext
+			logger.Log.Critical(string(internal.PrintStack()))
 		}
+		rc.checkAbort()
+		rc.finish()
+		response = rc.responseContext
 	}()
 
 	rc.initStack()
 	// if free not set abortContext nil, cached abort status will
 	// terminate this abnormal state.
 	for !rc.isAbort() && rc.stack.length > 0 {
-		// using strategy. check every time when pop stack.
-		if rc.openStrategy.Load() {
-			if rc.Async {
-				rc.asyncExecute()
+		if !rc.openStrategy.Load() {
+			// no strategy.
+			rc.stack.Pop()(rc)
+		} else {
+			// using timeout. do async.
+			if rc.async {
+				// done channel with buffer, attention here.
+				// if no buffer here, some goroutines will
+				// block in the end.
+				done := make(chan bool, 1)
+				go rc.asyncExecute(done)
 				select {
-				case <- rc.asyncSignal:
-					// do nothing.
+				case <- done:
+					close(done)
 				case <- rc.timeoutSignal:
 					rc.handleTimeOut(rc)
-					//close(rc.asyncSignal)
-					break
+					return
 				}
 			} else {
-				select {
-				case <-rc.timeoutSignal:
-					rc.handleTimeOut(rc)
-					break
-
-				default:
-					rc.stack.Pop()(rc)
-					// handle ttl here
-					if rc.Ttl == 0 {
-						rc.handleTTL(rc)
-						break
-					}
-					// stack execute once. ttl -= 1
-					rc.decTTL()
+				rc.stack.Pop()(rc)
+				if rc.Ttl == 0 {
+					rc.handleTTL(rc)
+					return
 				}
+				rc.decTTL()
 			}
-		} else {
-			rc.stack.Pop()(rc)
 		}
 	}
-	rc.checkAbort()
-	rc.finish()
-	response = rc.responseContext
 	return
 }
 
@@ -458,8 +451,6 @@ func (rc *RequestContext) RegisterStrategy(strategy *StrategyContext) {
 	} else {
 		strategy.wrapDefault()
 	}
-	// when set the strategy, init the timeout chan
-	strategy.timeoutSignal = time.After(strategy.Timeout)
 	rc.openStrategy.Store(true)
 	rc.StrategyContext = strategy
 }

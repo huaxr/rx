@@ -11,6 +11,15 @@ import (
 	"github.com/huaxr/rx/internal"
 )
 
+//type IsAsync bool
+//
+//
+//type handlerCore struct {
+//	async IsAsync
+//	handlerFunc func(ctx ReqCxtI)
+//	handlerAsyncFunc func(ctx ReqCxtI) (done chan bool)
+//}
+
 type handlerFunc func(ctx ReqCxtI)
 
 type router struct {

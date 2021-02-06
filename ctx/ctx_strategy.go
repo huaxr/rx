@@ -11,7 +11,6 @@ import (
 type StrategyI interface {
 	SetTimeOut(t time.Duration)
 	SetTTL(t int32)
-	SetAsync(t bool)
 }
 
 type PanicI interface {
@@ -19,8 +18,7 @@ type PanicI interface {
 }
 
 type signal struct {
-	// the signal definition
-	asyncSignal chan bool
+	async bool
 	timeoutSignal <-chan time.Time
 }
 
@@ -31,10 +29,10 @@ type StrategyContext struct {
 	// execute time quota on the stack funcHandlers.
 	// if there got a blocking or demanding pending task
 	// with the Async true to run it background.
-	Timeout time.Duration
+
 	// set Async identification to inform program to execute
-	// the method by asynchronous
-	Async bool
+	// the method by asynchronous. TimeOut option is an async true
+	Timeout time.Duration
 
 	// panic happens in execute function
 	Panic PanicI
@@ -53,9 +51,8 @@ func openDefaultStrategy() *StrategyContext {
 	s := new(StrategyContext)
 	s.Timeout = 0xff * time.Hour
 	s.Ttl = -1
-	s.Async = false
-	s.asyncSignal = make(chan bool, 1)
-	s.timeoutSignal = make(<-chan time.Time, 1)
+	s.async = false
+	s.timeoutSignal = make(<-chan time.Time)
 	return s
 }
 
@@ -66,7 +63,13 @@ func (s *StrategyContext) wrapDefault() {
 	}
 	if s.Timeout <= 0 {
 		s.Timeout = 0xff * time.Hour
+		s.async = false
+	} else {
+		s.async = true
 	}
+
+	// when set the strategy, init the timeout chan
+	s.timeoutSignal = time.After(s.Timeout)
 }
 
 func (s *StrategyContext) SetTimeOut(t time.Duration) {
@@ -79,10 +82,6 @@ func (s *StrategyContext) SetTTL(t int32) {
 		return
 	}
 	s.Ttl = t + 1
-}
-
-func (s *StrategyContext) SetAsync(t bool) {
-	s.Async = t
 }
 
 func (s *StrategyContext) decTTL() {

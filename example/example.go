@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/huaxr/rx/logger"
+	"runtime"
 	"time"
 
 	"github.com/huaxr/rx/ctx"
@@ -10,8 +11,8 @@ import (
 func handler1(c ctx.ReqCxtI) {
 	//c.SetDefaultTimeOut(1 * time.Second)
 	//c.SetDefaultTTL(4)
-	logger.Log.Info("execute handler1")
-	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4, Timeout: 1 * time.Second, Async: true})
+	logger.Log.Info("execute handler1", runtime.NumGoroutine())
+	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4, Timeout: 1 * time.Microsecond})
 	//c.SetTimeOut(100 * time.Millisecond)
 }
 
@@ -19,6 +20,7 @@ func handler2(c ctx.ReqCxtI) {
 	// 使用异步来标识异步处理逻辑
 	time.Sleep(2 * time.Second)
 	logger.Log.Info("execute handler2")
+	c.JSON(200, "xxx")
 }
 
 func handler3(c ctx.ReqCxtI) {
