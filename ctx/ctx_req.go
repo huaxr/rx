@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -208,13 +207,13 @@ func (rc *RequestContext) wrapRequestHeader(header []byte) error {
 	}
 	queryUrl, err := url.Parse(firstLine[1])
 	if err != nil {
-		log.Println("err when handler the query path")
+		logger.Log.Error("err when handler the query path")
 		return err
 	}
 	// delete version
 	params, err := url.ParseQuery(queryUrl.RawQuery)
 	if err != nil {
-		log.Println("err when handler the query raw path")
+		logger.Log.Error("err when handler the query raw path")
 		return err
 	}
 	rc.reqParameters = params
@@ -318,7 +317,7 @@ func (rc *RequestContext) execute() (response *responseContext) {
 					// do nothing.
 				case <- rc.timeoutSignal:
 					rc.handleTimeOut(rc)
-					close(rc.asyncSignal)
+					//close(rc.asyncSignal)
 					break
 				}
 			} else {

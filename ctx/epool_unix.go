@@ -7,7 +7,7 @@ package ctx
 // +build darwin netbsd freebsd openbsd dragonfly
 
 import (
-	"log"
+	"github.com/huaxr/rx/logger"
 	"syscall"
 )
 
@@ -93,13 +93,13 @@ func (p *poll) Looping(execute func(fd int) error) {
 	for {
 		n, err := syscall.Kevent(p.srvFd, p.changes, events, nil)
 		if err != nil && err != syscall.EINTR {
-			log.Println("err while Looping", err)
+			logger.Log.Error("err while Looping", err)
 		}
 		p.changes = p.changes[:0]
 		for i := 0; i < n; i++ {
 			if fd := int(events[i].Ident); fd != 0 {
 				if err := execute(fd); err != nil {
-					log.Println("err while Looping", err)
+					logger.Log.Error("err while Looping", err)
 				}
 			}
 		}

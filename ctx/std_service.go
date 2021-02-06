@@ -5,7 +5,7 @@
 package ctx
 
 import (
-	"log"
+	"github.com/huaxr/rx/logger"
 	"net"
 	"sync"
 
@@ -32,7 +32,7 @@ func (t *stdServer) GetNetwork() string {
 
 func (t *stdServer) handlerErr() {
 	for i := range t.acceptErr {
-		log.Println("TcpSocket err:", i)
+		logger.Log.Error("TcpSocket err:", i)
 	}
 }
 
@@ -55,7 +55,7 @@ func newServer(network string, addr string) *stdServer {
 }
 
 func (t *stdServer) startServer() {
-	log.Println("start server on:", t.GetAddr())
+	logger.Log.Info("start server on:", t.GetAddr())
 	t.wg.Add(internal.ServerSize)
 	for i := internal.ServerSize; i > 0; i-- {
 		go func(wg *sync.WaitGroup) {

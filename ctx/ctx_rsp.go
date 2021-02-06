@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/huaxr/rx/logger"
 	"time"
 
 	"github.com/huaxr/rx/internal"
@@ -65,7 +65,7 @@ func (rsp *responseContext) JSON(status int16, response interface{}) {
 	rsp.rspHeaders["Content-Type"] = internal.MIMEJSON
 	bits, err := json.Marshal(response)
 	if err != nil {
-		log.Println(err)
+		logger.Log.Error("marshal err: %v", err)
 	}
 	rsp.rspBody = append(rsp.rspBody, bits...)
 }

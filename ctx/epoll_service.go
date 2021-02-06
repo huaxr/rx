@@ -5,7 +5,7 @@
 package ctx
 
 import (
-	"log"
+	"github.com/huaxr/rx/logger"
 	"net"
 	"os"
 	"sync"
@@ -31,7 +31,7 @@ type loopServer struct {
 }
 
 func (srv *loopServer) Run() {
-	log.Println("starting the epoll")
+	logger.Log.Info("starting the epoll")
 	srv.poll.Looping(srv.execute)
 }
 

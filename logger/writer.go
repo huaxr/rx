@@ -17,9 +17,8 @@ func RegisterLogRequest(writer ...io.Writer) {
 	reqWriter =  io.MultiWriter(writer...)
 }
 
-
 // normal request log
-var reqWriter io.Writer
+var reqWriter io.Writer = os.Stdout
 
 type requestFormatter struct {
 	// TimeStamp shows log current time

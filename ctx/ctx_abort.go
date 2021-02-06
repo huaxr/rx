@@ -6,7 +6,7 @@ package ctx
 
 import (
 	"encoding/json"
-	"log"
+	"github.com/huaxr/rx/logger"
 )
 
 type AbortI interface {
@@ -27,7 +27,7 @@ func (ac *abortContext) GetAbortMessage() []byte {
 	default:
 		bs, err := json.Marshal(ac.message)
 		if err != nil {
-			log.Println("err when marshal the abort context")
+			logger.Log.Error("err when marshal the abort context")
 			return nil
 		}
 		return bs

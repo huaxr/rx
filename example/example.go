@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"github.com/huaxr/rx/logger"
 	"time"
 
 	"github.com/huaxr/rx/ctx"
@@ -10,8 +10,7 @@ import (
 func handler1(c ctx.ReqCxtI) {
 	//c.SetDefaultTimeOut(1 * time.Second)
 	//c.SetDefaultTTL(4)
-	panic("xxx")
-	log.Println("execute handler1")
+	logger.Log.Info("execute handler1")
 	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4, Timeout: 1 * time.Second, Async: true})
 	//c.SetTimeOut(100 * time.Millisecond)
 }
@@ -19,11 +18,11 @@ func handler1(c ctx.ReqCxtI) {
 func handler2(c ctx.ReqCxtI) {
 	// 使用异步来标识异步处理逻辑
 	time.Sleep(2 * time.Second)
-	log.Println("execute handler2")
+	logger.Log.Info("execute handler2")
 }
 
 func handler3(c ctx.ReqCxtI) {
-	log.Println("execute handler3")
+	logger.Log.Info("execute handler3")
 }
 
 type PostBody struct {
@@ -34,23 +33,27 @@ func last(c ctx.ReqCxtI) {
 	var post PostBody
 	err := c.ParseBody(&post)
 	c.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
-	log.Println("execute last", err, post.Name)
+	logger.Log.Info("execute last", err, post.Name)
 	//ctx.Next(handler3)
 	//ctx.Abort(200, "sorry")
 }
 
 func handler4(c ctx.ReqCxtI) {
-	log.Println("execute handler4")
+	logger.Log.Info("execute handler4")
 }
 
 func handler5(c ctx.ReqCxtI) {
-	log.Println("execute handler5")
+	logger.Log.Info("execute handler5")
 	c.JSON(200, "XXX")
 }
 
 // std epoll
 func main() {
 
+	logger.Log.Critical("aaa", )
+	logger.Log.Error("bbb", )
+	logger.Log.Warning("ccc", )
+	logger.Log.Info("ddd %v", "sss")
 	server := ctx.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
 

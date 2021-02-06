@@ -6,21 +6,40 @@ package logger
 
 import (
 	"fmt"
+	"runtime"
+	"strings"
 )
 
 type Logger interface {
 
-	Critical(message ...string)
+	Critical(format string,val ...interface{})
 
-	Error(message ...string)
+	Error(format string,val ...interface{})
 
-	Warning(message ...string)
+	Warning(format string,val ...interface{})
 
-	Info(message ...string)
+	Info(format string,val ...interface{})
 }
 
 var Log Logger
 
+type COLOR int
+
+const (
+	BLACK COLOR = iota + 30
+	RED
+	GREEN
+	YELLOW
+	BLUE
+	PURPLE
+)
+
+var colorSet = map[string]COLOR {
+	"Critical": RED,
+	"Error": PURPLE,
+	"Warning": YELLOW,
+	"Info":  GREEN,
+}
 
 func InitLogger(l Logger) {
 	Log = l
@@ -35,27 +54,34 @@ type log struct {
 
 }
 
-func (l *log) do(level string, message ...string) {
-	if len(message) == 1 {
-		fmt.Fprint(reqWriter, fmt.Sprintf("[RX %s]: %s", level, message))
-	} else {
-		mes := message[0]
-		fmt.Fprint(reqWriter, fmt.Sprintf("[RX %s]: %s", level, fmt.Sprintf(mes, message[0:])))
+func debugLine(){
+	// 1. func name
+	_, file, line, ok := runtime.Caller(2)
+	if ok {
+		path := strings.Split(file, "/rx/")[1] + fmt.Sprintf(":%d", line) + "\n"
+		fmt.Fprint(reqWriter, path)
 	}
 }
 
-func (l *log) Critical(message ...string) {
-	l.do("Critical", message...)
+func (l *log) do(level string, format string, val ...interface{}) {
+	res := fmt.Sprintf("[RX %s]:%s \n", level, fmt.Sprintf(format, val...))
+	fmt.Fprint(reqWriter, fmt.Sprintf("\x1b[%dm%s\x1b[0m", colorSet[level], res))
 }
 
-func (l *log) Error(message ...string) {
-	l.do("Error", message...)
+func (l *log) Critical(format string, val ...interface{}) {
+	debugLine()
+	l.do("Critical", format, val...)
 }
 
-func (l *log) Warning(message ...string) {
-	l.do("Warning", message...)
+func (l *log) Error(format string,val ...interface{}) {
+	debugLine()
+	l.do("Error", format, val...)
 }
 
-func (l *log) Info(message ...string) {
-	l.do("Info", message...)
+func (l *log) Warning(format string, val ...interface{}) {
+	l.do("Warning", format, val...)
+}
+
+func (l *log) Info(format string,val ...interface{}) {
+	l.do("Info", format, val...)
 }
