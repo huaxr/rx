@@ -13,7 +13,7 @@ import (
 
 var DefaultWriter io.Writer = os.Stdout
 
-type LogFormatterParams struct {
+type logFormatterParams struct {
 	// TimeStamp shows log current time
 	TimeStamp time.Time
 	// StatusCode is HTTP response code.
@@ -29,7 +29,7 @@ type LogFormatterParams struct {
 }
 
 // defaultLogFormatter is the default log format function Logger middleware uses.
-var defaultLogFormatter = func(param LogFormatterParams) string {
+var defaultLogFormatter = func(param logFormatterParams) string {
 	return fmt.Sprintf("[RX] %v |%3d| %13v | %15s |%-7s %#v\n",
 		param.TimeStamp.Format("01/02 15:04:05"),
 		param.StatusCode,
@@ -43,7 +43,7 @@ var defaultLogFormatter = func(param LogFormatterParams) string {
 func Log(ctx *requestContext) {
 	start := ctx.startTime()
 	end := ctx.stopTime()
-	param := LogFormatterParams{}
+	param := logFormatterParams{}
 
 	param.TimeStamp = time.Now()
 	param.Latency = end.Sub(start)

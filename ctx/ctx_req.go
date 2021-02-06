@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -151,7 +152,9 @@ func (r *requestContext) isAbort() bool {
 
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
 func (r *requestContext) free() *requestContext {
-	//r.abortContext = nil
+	r.abortContext = nil
+	//r.responseContext = nil
+	//r.StrategyContext = nil
 	// if the openStrategy did not set false, it will trigger nil pointer
 	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
 	r.reqHeaders = map[string]interface{}{}
@@ -255,16 +258,14 @@ func (rc *requestContext) checkAbort() bool {
 	return false
 }
 
-func (rcx *requestContext) asyncExecute() chan bool {
+func (rcx *requestContext) asyncExecute() {
 	// response data received
-	retCh := make(chan bool, 1)
-
 	go func(rc *requestContext) {
 		for !rc.isAbort() && rc.stack.length > 0 {
 			//rc.checkAbort()
 			// any response here
 			if len(rc.rspBody) > 0 && rc.status != 0 {
-				retCh <- true
+				rcx.asyncSignal <- true
 				return
 			}
 
@@ -272,15 +273,13 @@ func (rcx *requestContext) asyncExecute() chan bool {
 			// handle ttl here
 			if rc.Ttl == 0 {
 				rc.handleTTL(rc)
-				retCh <- true
+				rcx.asyncSignal <- true
 				return
 			}
 			// stack execute once. ttl -= 1
 			rc.decTTL()
 		}
 	}(rcx)
-
-	return retCh
 }
 
 // the core handler invoke and trigger some events in each handler.
@@ -288,19 +287,30 @@ func (rcx *requestContext) asyncExecute() chan bool {
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
 // stack peek and execute it when next pop.
-func (rc *requestContext) execute() *responseContext {
+func (rc *requestContext) execute() (response *responseContext) {
+	defer func() {
+		if r := recover(); r != nil {
+			os.Stderr.Write(internal.PrintStack())
+			rc.handlePanic(rc)
+			rc.checkAbort()
+			response =  rc.responseContext
+		}
+	}()
+
 	rc.initStack()
+	// if free not set abortContext nil, cached abort status will
+	// terminate this abnormal state.
 	for !rc.isAbort() && rc.stack.length > 0 {
 		// using strategy. check every time when pop stack.
 		if rc.openStrategy.Load() {
 			if rc.Async {
-				async := rc.asyncExecute()
+				rc.asyncExecute()
 				select {
-				case <-async:
+				case <- rc.asyncSignal:
 					// do nothing.
-				case <-rc.timeoutSignal:
+				case <- rc.timeoutSignal:
 					rc.handleTimeOut(rc)
-					close(async)
+					close(rc.asyncSignal)
 					break
 				}
 			} else {
@@ -310,13 +320,7 @@ func (rc *requestContext) execute() *responseContext {
 					break
 
 				default:
-					// if the ctx abort by an Abort calling.
-					//if rc.checkAbort() {
-					//	return rc.responseContext
-					//}
-					h := rc.stack.Pop()
-					h(rc)
-
+					rc.stack.Pop()(rc)
 					// handle ttl here
 					if rc.Ttl == 0 {
 						rc.handleTTL(rc)
@@ -327,16 +331,13 @@ func (rc *requestContext) execute() *responseContext {
 				}
 			}
 		} else {
-			// if the ctx abort by an Abort calling.
-			//if rc.checkAbort() {
-			//	return rc.responseContext
-			//}
 			rc.stack.Pop()(rc)
 		}
 	}
 	rc.checkAbort()
 	rc.finish()
-	return rc.responseContext
+	response = rc.responseContext
+	return
 }
 
 func (rc *requestContext) getDefaultHandlerSlice() []handlerFunc {
@@ -450,7 +451,6 @@ func (rc *requestContext) RegisterStrategy(strategy *StrategyContext) {
 	} else {
 		strategy.wrapDefault()
 	}
-
 	// when set the strategy, init the timeout chan
 	strategy.timeoutSignal = time.After(strategy.Timeout)
 	rc.openStrategy.Store(true)

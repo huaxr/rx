@@ -14,17 +14,32 @@ type StrategyI interface {
 	SetAsync(t bool)
 }
 
+type PanicI interface {
+	Do()
+}
+
+type signal struct {
+	// the signal definition
+	asyncSignal chan bool
+	timeoutSignal <-chan time.Time
+}
+
 // strategy is under developing now, it functions will enhanced later
 type StrategyContext struct {
 	// time to live, stack execute profundity.
 	Ttl int32
-	// execute timeout
+	// execute time quota on the stack funcHandlers.
+	// if there got a blocking or demanding pending task
+	// with the Async true to run it background.
 	Timeout time.Duration
 	// set Async identification to inform program to execute
 	// the method by asynchronous
 	Async bool
 
-	timeoutSignal <-chan time.Time
+	// panic happens in execute function
+	Panic PanicI
+
+	signal
 }
 
 // openDefaultStrategy open the default strategy here.
@@ -36,10 +51,11 @@ type StrategyContext struct {
 // default Timeout never expire.
 func openDefaultStrategy() *StrategyContext {
 	s := new(StrategyContext)
-	s.timeoutSignal = make(<-chan time.Time)
 	s.Timeout = 0xff * time.Hour
 	s.Ttl = -1
 	s.Async = false
+	s.asyncSignal = make(chan bool, 1)
+	s.timeoutSignal = make(<-chan time.Time, 1)
 	return s
 }
 
@@ -82,4 +98,8 @@ func (s *StrategyContext) handleTimeOut(rc *requestContext) {
 
 func (s *StrategyContext) handleTTL(rc *requestContext) {
 	rc.setAbort(200, "this router ttl out")
+}
+
+func (s *StrategyContext) handlePanic(rc *requestContext) {
+	rc.setAbort(500, "panic")
 }
