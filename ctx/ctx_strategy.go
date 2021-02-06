@@ -18,7 +18,7 @@ type PanicI interface {
 }
 
 type signal struct {
-	async bool
+	timeout bool
 	timeoutSignal <-chan time.Time
 }
 
@@ -33,6 +33,8 @@ type StrategyContext struct {
 	// set Async identification to inform program to execute
 	// the method by asynchronous. TimeOut option is an async true
 	Timeout time.Duration
+
+	Async bool
 
 	// panic happens in execute function
 	Panic PanicI
@@ -51,7 +53,8 @@ func openDefaultStrategy() *StrategyContext {
 	s := new(StrategyContext)
 	s.Timeout = 0xff * time.Hour
 	s.Ttl = -1
-	s.async = false
+	s.Async = false
+	s.timeout = false
 	s.timeoutSignal = make(<-chan time.Time)
 	return s
 }
@@ -63,9 +66,7 @@ func (s *StrategyContext) wrapDefault() {
 	}
 	if s.Timeout <= 0 {
 		s.Timeout = 0xff * time.Hour
-		s.async = false
-	} else {
-		s.async = true
+		s.timeout = false
 	}
 
 	// when set the strategy, init the timeout chan

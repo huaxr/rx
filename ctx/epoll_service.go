@@ -159,6 +159,7 @@ func (srv *loopServer) loopRead(c *conn) error {
 	}
 
 	reqContext := wrapRequest(c.in)
+	reqContext.mod = EPoll
 	putContext(reqContext)
 	reqContext.setClientAddr(c.connInfo)
 

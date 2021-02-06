@@ -7,7 +7,6 @@ package ctx
 import (
 	"bufio"
 	"bytes"
-	"github.com/huaxr/rx/logger"
 	"io"
 	"net"
 	"sync"
@@ -63,18 +62,13 @@ func (wp *WorkerPool) startWorkers() {
 		}
 
 		reqContext := wrapRequest(buffer.Bytes())
+		reqContext.mod = Std
+		reqContext.conn = con
 		buffer.Reset()
-
 		// set the remoteAddr for logger usage
 		reqContext.setClientAddr(con.RemoteAddr())
-		res := reqContext.execute()
+		reqContext.execute()
 		putContext(reqContext)
-		_, err := con.Write(res.rspToBytes())
-		if err != nil {
-			logger.Log.Error(err.Error())
-			_ = con.Close()
-			continue
-		}
-		_ = con.Close()
+
 	}
 }

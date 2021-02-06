@@ -50,6 +50,13 @@ type ReqCxtI interface {
 	RegisterStrategy(strategy *StrategyContext)
 }
 
+type mod int
+
+const (
+	Std mod = iota
+	EPoll
+)
+
 // RequestContext contains all the ctx when a req has triggered
 type RequestContext struct {
 	*responseContext
@@ -57,6 +64,8 @@ type RequestContext struct {
 	*abortContext
 	*StrategyContext
 
+	conn net.Conn
+	mod  mod
 	// method request method
 	method string
 	// path request location
@@ -160,6 +169,7 @@ func (r *RequestContext) free() *RequestContext {
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
 	r.openStrategy.Store(false)
+	r.finished.Store(false)
 	//r.StrategyContext = openDefaultStrategy()
 	return r
 }
@@ -264,7 +274,33 @@ func (rc *RequestContext) checkAbort() bool {
 	return false
 }
 
+func (rc *RequestContext) isStd() bool {
+	return rc.mod == Std
+}
+
+func (rc *RequestContext) isEPoll() bool {
+	return rc.mod == EPoll
+}
+
+func (rc *RequestContext) connSend() {
+	if !rc.isStd() {
+		return
+	}
+	_, err := rc.conn.Write(rc.responseContext.rspToBytes())
+	if err != nil {
+		logger.Log.Error(err.Error())
+		_ = rc.conn.Close()
+	}
+	_ = rc.conn.Close()
+}
+
 func (rc *RequestContext) asyncExecute(async chan bool) {
+	defer func() {
+		rc.checkAbort()
+		rc.finish()
+		rc.connSend()
+	}()
+
 	// response data received
 	for !rc.isAbort() && rc.stack.length > 0 {
 		// demanding processing should be using handlerFunc() to return
@@ -295,14 +331,17 @@ func (rc *RequestContext) asyncExecute(async chan bool) {
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
 // stack peek and execute it when next pop.
-func (rc *RequestContext) execute() (response *responseContext) {
+func (rc *RequestContext) execute() (response *responseContext){
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Critical(string(internal.PrintStack()))
 		}
-		rc.checkAbort()
-		rc.finish()
-		response = rc.responseContext
+		if !rc.Async {
+			rc.checkAbort()
+			rc.finish()
+			response = rc.responseContext
+			rc.connSend()
+		}
 	}()
 
 	rc.initStack()
@@ -313,11 +352,11 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			// no strategy.
 			rc.stack.Pop()(rc)
 		} else {
-			// using timeout. do async.
-			if rc.async {
+			// using timeout. using async.
+			if rc.timeout {
 				// done channel with buffer, attention here.
 				// if no buffer here, some goroutines will
-				// block in the end.
+				// deadly block in the end.
 				done := make(chan bool, 1)
 				go rc.asyncExecute(done)
 				select {
@@ -325,16 +364,23 @@ func (rc *RequestContext) execute() (response *responseContext) {
 					close(done)
 				case <- rc.timeoutSignal:
 					rc.handleTimeOut(rc)
-					return
 				}
-			} else {
-				rc.stack.Pop()(rc)
-				if rc.Ttl == 0 {
-					rc.handleTTL(rc)
-					return
-				}
-				rc.decTTL()
+				return
 			}
+
+			if rc.Async {
+				done := make(chan bool)
+				go rc.asyncExecute(done)
+				return
+			}
+
+			rc.stack.Pop()(rc)
+			if rc.Ttl == 0 {
+				rc.handleTTL(rc)
+				return
+			}
+			rc.decTTL()
+
 		}
 	}
 	return
