@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/huaxr/rx-internal"
 	"log"
 	"net"
 	"net/url"
@@ -17,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/huaxr/rx/ctx/internal"
-	"github.com/huaxr/rx-log"
+	"github.com/huaxr/rx/internal"
+	"github.com/huaxr/rx/logger"
 
 	"go.uber.org/atomic"
 )
@@ -248,7 +247,7 @@ func (rc *RequestContext) finish() {
 	if !rc.finished.Load() {
 		rc.SetStopTime(time.Now())
 		rc.finished.Store(true)
-		rx_log.ReqLog(&rx_internal.RequestLogger{
+		logger.ReqLog(&internal.RequestLogger{
 			StartTime: rc.time,
 			StopTime: rc.responseContext.time,
 			Ip: rc.GetClientAddr(),

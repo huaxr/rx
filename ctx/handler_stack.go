@@ -7,7 +7,7 @@ package ctx
 import (
 	"sync"
 
-	"github.com/huaxr/rx/ctx/internal"
+	"github.com/huaxr/rx/internal"
 )
 
 type (

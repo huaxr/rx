@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huaxr/rx/ctx/internal"
+	"github.com/huaxr/rx/internal"
 )
 
 type handlerFunc func(ctx ReqCxtI)

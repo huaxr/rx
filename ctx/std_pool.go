@@ -7,12 +7,12 @@ package ctx
 import (
 	"bufio"
 	"bytes"
+	"github.com/huaxr/rx/logger"
 	"io"
-	"log"
 	"net"
 	"sync"
 
-	"github.com/huaxr/rx/ctx/internal"
+	"github.com/huaxr/rx/internal"
 )
 
 var BtsPool = sync.Pool{
@@ -71,7 +71,7 @@ func (wp *WorkerPool) startWorkers() {
 		putContext(reqContext)
 		_, err := con.Write(res.rspToBytes())
 		if err != nil {
-			log.Println("startWorkers error:", err)
+			logger.Log.Error(err.Error())
 			_ = con.Close()
 			continue
 		}

@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/huaxr/rx/ctx/internal"
+	"github.com/huaxr/rx/internal"
 )
 
 // TcpSocket the raw socket
