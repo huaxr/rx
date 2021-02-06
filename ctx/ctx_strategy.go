@@ -92,14 +92,14 @@ func (s *StrategyContext) decTTL() {
 	s.Ttl -= 1
 }
 
-func (s *StrategyContext) handleTimeOut(rc *requestContext) {
+func (s *StrategyContext) handleTimeOut(rc *RequestContext) {
 	rc.setAbort(200, "this router timeout")
 }
 
-func (s *StrategyContext) handleTTL(rc *requestContext) {
+func (s *StrategyContext) handleTTL(rc *RequestContext) {
 	rc.setAbort(200, "this router ttl out")
 }
 
-func (s *StrategyContext) handlePanic(rc *requestContext) {
+func (s *StrategyContext) handlePanic(rc *RequestContext) {
 	rc.setAbort(500, "panic")
 }

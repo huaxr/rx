@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/huaxr/rx-internal"
 	"log"
 	"net"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/huaxr/rx/ctx/internal"
+	"github.com/huaxr/rx-log"
 
 	"go.uber.org/atomic"
 )
@@ -52,7 +54,7 @@ type ReqCxtI interface {
 }
 
 // RequestContext contains all the ctx when a req has triggered
-type requestContext struct {
+type RequestContext struct {
 	*responseContext
 	// abort preStatus will not execute or generate the response handler
 	*abortContext
@@ -87,7 +89,7 @@ type requestContext struct {
 
 var reqCtxPool = sync.Pool{
 	New: func() interface{} {
-		return &requestContext{
+		return &RequestContext{
 			responseContext: &responseContext{
 				rspHeaders: make(map[string]interface{}),
 				rspBody:    []byte{},
@@ -98,31 +100,31 @@ var reqCtxPool = sync.Pool{
 	},
 }
 
-func putContext(rc *requestContext) {
+func putContext(rc *RequestContext) {
 	rc.free()
 	reqCtxPool.Put(rc)
 }
 
-func (r *requestContext) getPath(real bool) string {
+func (r *RequestContext) getPath(real bool) string {
 	if real {
 		return r.path
 	}
 	return strings.ToLower(r.method) + "::" + r.path
 }
 
-func (r *requestContext) GetHeaders() map[string]interface{} {
+func (r *RequestContext) GetHeaders() map[string]interface{} {
 	return r.reqHeaders
 }
 
-func (r *requestContext) GetMethod() string {
+func (r *RequestContext) GetMethod() string {
 	return r.method
 }
 
-func (r *requestContext) GetBody() []byte {
+func (r *RequestContext) GetBody() []byte {
 	return r.reqBody.Bytes()
 }
 
-func (r *requestContext) GetClientAddr() string {
+func (r *RequestContext) GetClientAddr() string {
 	if r.clientAddr == nil {
 		return ""
 	}
@@ -130,11 +132,11 @@ func (r *requestContext) GetClientAddr() string {
 }
 
 // SetClientAddr set the address for logger usage
-func (r *requestContext) setClientAddr(addr net.Addr) {
+func (r *RequestContext) setClientAddr(addr net.Addr) {
 	r.clientAddr = addr
 }
 
-func (r *requestContext) setAbort(status int16, message interface{}) {
+func (r *RequestContext) setAbort(status int16, message interface{}) {
 	r.status = status
 	switch message.(type) {
 	default:
@@ -146,12 +148,12 @@ func (r *requestContext) setAbort(status int16, message interface{}) {
 	r.finish()
 }
 
-func (r *requestContext) isAbort() bool {
+func (r *RequestContext) isAbort() bool {
 	return r.abortContext != nil || r.finished.Load()
 }
 
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
-func (r *requestContext) free() *requestContext {
+func (r *RequestContext) free() *RequestContext {
 	r.abortContext = nil
 	//r.responseContext = nil
 	//r.StrategyContext = nil
@@ -165,9 +167,9 @@ func (r *requestContext) free() *requestContext {
 	return r
 }
 
-func wrapRequest(buffer []byte) *requestContext {
+func wrapRequest(buffer []byte) *RequestContext {
 	var err error
-	reqCtx := reqCtxPool.Get().(*requestContext)
+	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
@@ -194,7 +196,7 @@ ABORT:
 	return reqCtx
 }
 
-func (rc *requestContext) wrapRequestHeader(header []byte) error {
+func (rc *RequestContext) wrapRequestHeader(header []byte) error {
 	headerLines := bytes.Split(header, []byte("\r\n"))
 	if len(headerLines) == 0 {
 		return errors.New("headerLines invalid")
@@ -232,7 +234,7 @@ func (rc *requestContext) wrapRequestHeader(header []byte) error {
 	return nil
 }
 
-func (rc *requestContext) wrapRequestBody(body []byte) error {
+func (rc *RequestContext) wrapRequestBody(body []byte) error {
 	var buffer bytes.Buffer
 	_, err := buffer.Write(body)
 	if err != nil {
@@ -242,15 +244,22 @@ func (rc *requestContext) wrapRequestBody(body []byte) error {
 	return nil
 }
 
-func (rc *requestContext) finish() {
+func (rc *RequestContext) finish() {
 	if !rc.finished.Load() {
 		rc.SetStopTime(time.Now())
 		rc.finished.Store(true)
-		Log(rc)
+		rx_log.ReqLog(&rx_internal.RequestLogger{
+			StartTime: rc.time,
+			StopTime: rc.responseContext.time,
+			Ip: rc.GetClientAddr(),
+			Method: rc.GetMethod(),
+			Path: rc.getPath(true),
+			Status: rc.status,
+		})
 	}
 }
 
-func (rc *requestContext) checkAbort() bool {
+func (rc *RequestContext) checkAbort() bool {
 	if rc.isAbort() {
 		rc.responseContext.rspBody = rc.abortContext.GetAbortMessage()
 		return true
@@ -258,9 +267,9 @@ func (rc *requestContext) checkAbort() bool {
 	return false
 }
 
-func (rcx *requestContext) asyncExecute() {
+func (rcx *RequestContext) asyncExecute() {
 	// response data received
-	go func(rc *requestContext) {
+	go func(rc *RequestContext) {
 		for !rc.isAbort() && rc.stack.length > 0 {
 			//rc.checkAbort()
 			// any response here
@@ -287,7 +296,7 @@ func (rcx *requestContext) asyncExecute() {
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
 // stack peek and execute it when next pop.
-func (rc *requestContext) execute() (response *responseContext) {
+func (rc *RequestContext) execute() (response *responseContext) {
 	defer func() {
 		if r := recover(); r != nil {
 			os.Stderr.Write(internal.PrintStack())
@@ -340,7 +349,7 @@ func (rc *requestContext) execute() (response *responseContext) {
 	return
 }
 
-func (rc *requestContext) getDefaultHandlerSlice() []handlerFunc {
+func (rc *RequestContext) getDefaultHandlerSlice() []handlerFunc {
 	if rc.isAbort() {
 		handlers := []handlerFunc{}
 		status := rc.abortContext.abortStatus
@@ -362,7 +371,7 @@ func (rc *requestContext) getDefaultHandlerSlice() []handlerFunc {
 	return nil
 }
 
-func (rc *requestContext) getDefaultHandlerStack() *stack {
+func (rc *RequestContext) getDefaultHandlerStack() *stack {
 	if rc.isAbort() {
 		status := rc.abortContext.abortStatus
 		switch {
@@ -384,24 +393,24 @@ func (rc *requestContext) getDefaultHandlerStack() *stack {
 	return nil
 }
 
-func (rc *requestContext) Set(key string, val interface{}) {
+func (rc *RequestContext) Set(key string, val interface{}) {
 	rc.flashStore.Store(key, val)
 }
 
-func (rc *requestContext) Get(key string) interface{} {
+func (rc *RequestContext) Get(key string) interface{} {
 	val, _ := rc.flashStore.Load(key)
 	return val
 }
 
-func (rc *requestContext) startTime() time.Time {
+func (rc *RequestContext) startTime() time.Time {
 	return rc.time
 }
 
-func (rc *requestContext) Next(handlerFunc handlerFunc) {
+func (rc *RequestContext) Next(handlerFunc handlerFunc) {
 	rc.stack.Push(handlerFunc)
 }
 
-func (rc *requestContext) initStack() {
+func (rc *RequestContext) initStack() {
 	handles := rc.getDefaultHandlerStack()
 	if handles != nil {
 		rc.stack = handles
@@ -415,14 +424,14 @@ func (rc *requestContext) initStack() {
 	rc.stack = handles
 }
 
-func (rc *requestContext) GetQuery(key, dft string) string {
+func (rc *RequestContext) GetQuery(key, dft string) string {
 	if val := rc.reqParameters.Get(key); val != "" {
 		return val
 	}
 	return dft
 }
 
-func (rc *requestContext) ParseBody(dst interface{}) error {
+func (rc *RequestContext) ParseBody(dst interface{}) error {
 	contentType, ok := rc.reqHeaders["content-type"]
 	if !ok {
 		contentType = internal.MIMEPlain
@@ -441,11 +450,11 @@ func (rc *requestContext) ParseBody(dst interface{}) error {
 	return nil
 }
 
-func (rc *requestContext) Abort(status int16, message interface{}) {
+func (rc *RequestContext) Abort(status int16, message interface{}) {
 	rc.setAbort(status, message)
 }
 
-func (rc *requestContext) RegisterStrategy(strategy *StrategyContext) {
+func (rc *RequestContext) RegisterStrategy(strategy *StrategyContext) {
 	if strategy == nil {
 		strategy = openDefaultStrategy()
 	} else {

@@ -1,10 +1,7 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"io"
 	"log"
-	"os"
 	"time"
 
 	"github.com/huaxr/rx/ctx"
@@ -53,8 +50,6 @@ func handler5(c ctx.ReqCxtI) {
 
 // std epoll
 func main() {
-	f, _ := os.Create("RX.log")
-	io.MultiWriter(f, os.Stdout)
 
 	server := ctx.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
@@ -74,9 +69,4 @@ func main() {
 
 	ctx.Register("post", "/ccc", handler1, handler2, handler5)
 	ctx.Register("get", "/ccc", handler1, handler2, handler4)
-}
-
-func main2() {
-	c := gin.Default()
-	c.GET("X")
 }
