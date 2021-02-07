@@ -134,6 +134,12 @@ func (r *RequestContext) free() *RequestContext {
 	return r
 }
 
+func (r *RequestContext) init() {
+	r.time = time.Now()
+	r.finished = atomic.NewBool(false)
+	r.flashStore = new(sync.Map)
+}
+
 func wrapStd(conn net.Conn) {
 
 	var buffer bytes.Buffer
@@ -186,19 +192,18 @@ func wrapStd(conn net.Conn) {
 	}
 
 	reqCtx := reqCtxPool.Get().(*RequestContext)
-	reqCtx.time = time.Now()
-	reqCtx.finished = atomic.NewBool(false)
-	reqCtx.flashStore = new(sync.Map)
+	reqCtx.init()
 
-	reqCtx.mod = Std
-	reqCtx.conn = conn
+	reqCtx.setMod(Std)
+	reqCtx.setRawSock(conn)
 
 	r, err := http.ReadRequest(bufio.NewReader(&buffer))
 	if err != nil {
 		logger.Log.Error("err: %v, buffer size: %d", err.Error(), buffer.Len())
 		reqCtx.setAbort(403, "Bad Request")
+	} else {
+		reqCtx.setRequest(r)
 	}
-	reqCtx.request = r
 	reqCtx.execute()
 	putContext(reqCtx)
 
@@ -206,10 +211,8 @@ func wrapStd(conn net.Conn) {
 
 func wrapEPoll(buf []byte) []byte {
 	reqCtx := reqCtxPool.Get().(*RequestContext)
-	reqCtx.time = time.Now()
-	reqCtx.finished = atomic.NewBool(false)
-	reqCtx.flashStore = new(sync.Map)
-	reqCtx.mod = EPoll
+	reqCtx.init()
+	reqCtx.setMod(EPoll)
 	r, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(buf)))
 	if err != nil {
 		logger.Log.Error(err.Error())
@@ -219,6 +222,18 @@ func wrapEPoll(buf []byte) []byte {
 	res := reqCtx.execute()
 	putContext(reqCtx)
 	return res.rspBody
+}
+
+func (rc *RequestContext) setMod(m mod) {
+	rc.mod = m
+}
+
+func (rc *RequestContext) setRawSock(c net.Conn) {
+	rc.conn = c
+}
+
+func (rc *RequestContext) setRequest(req *http.Request) {
+	rc.request = req
 }
 
 func (rc *RequestContext) GetMethod() string {
@@ -232,7 +247,7 @@ func (rc *RequestContext) GetPath() string {
 	if rc.request == nil {
 		return ""
 	}
-	return rc.request.RequestURI
+	return rc.request.URL.Path
 }
 
 func (rc *RequestContext) finish() {
@@ -501,7 +516,7 @@ func (rc *RequestContext) initStack() {
 }
 
 func (rc *RequestContext) getPathKey() string {
-	return fmt.Sprintf("%s::", strings.ToLower(rc.request.Method)) + rc.request.RequestURI
+	return fmt.Sprintf("%s::", strings.ToLower(rc.request.Method)) + rc.GetPath()
 }
 
 func (rc *RequestContext) ParseBody(dst interface{}) error {
@@ -509,7 +524,11 @@ func (rc *RequestContext) ParseBody(dst interface{}) error {
 }
 
 func (rc *RequestContext) GetQuery(key, dft string) string {
-	return ""
+	res, ok := rc.request.URL.Query()[key]
+	if !ok {
+		return dft
+	}
+	return res[0]
 }
 
 func (rc *RequestContext) Abort(status int16, message interface{}) {

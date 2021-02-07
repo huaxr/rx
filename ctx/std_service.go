@@ -5,9 +5,10 @@
 package ctx
 
 import (
-	"github.com/huaxr/rx/logger"
 	"net"
 	"sync"
+
+	"github.com/huaxr/rx/logger"
 
 	"github.com/huaxr/rx/internal"
 )
@@ -55,7 +56,7 @@ func newServer(network string, addr string) *stdServer {
 }
 
 func (t *stdServer) startServer() {
-	logger.Log.Info("start server on:", t.GetAddr())
+	logger.Log.Info("start server on: %v", t.GetAddr())
 	t.wg.Add(internal.ServerSize)
 	for i := internal.ServerSize; i > 0; i-- {
 		go func(wg *sync.WaitGroup) {

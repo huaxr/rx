@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"runtime"
 	"time"
 
@@ -36,10 +37,12 @@ type PostBody struct {
 }
 
 func last(c ctx.ReqCxtI) {
-	var post PostBody
-	err := c.ParseBody(&post)
-	c.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
-	logger.Log.Info("execute last", err, post.Name)
+	x := c.GetQuery("a", "xx")
+	log.Println(x)
+	//var post PostBody
+	//err := c.ParseBody(&post)
+	c.JSON(200, map[string]interface{}{"time": time.Now()})
+	logger.Log.Info("execute last")
 	//ctx.Next(handler3)
 	//ctx.Abort(200, "sorry")
 }
@@ -60,11 +63,6 @@ func upload(c ctx.ReqCxtI) {
 
 // std epoll
 func main() {
-
-	logger.Log.Critical("aaa")
-	logger.Log.Error("bbb")
-	logger.Log.Warning("ccc")
-	logger.Log.Info("ddd %v", "sss")
 	server := ctx.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
 
