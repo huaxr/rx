@@ -1,10 +1,12 @@
 package main
 
 import (
-	"github.com/huaxr/rx/logger"
 	"runtime"
 	"time"
 
+	"github.com/huaxr/rx/logger"
+
+	"github.com/gin-gonic/gin"
 	"github.com/huaxr/rx/ctx"
 )
 
@@ -12,8 +14,11 @@ func handler1(c ctx.ReqCxtI) {
 	//c.SetDefaultTimeOut(1 * time.Second)
 	//c.SetDefaultTTL(4)
 	logger.Log.Info("execute handler1", runtime.NumGoroutine())
-	c.RegisterStrategy(&ctx.StrategyContext{Ttl: 4,  Async:true})
-	//c.SetTimeOut(100 * time.Millisecond)
+	c.RegisterStrategy(
+		&ctx.StrategyContext{Ttl: 4,
+			Async: true,
+			//Timeout: 1*time.Second,
+		})
 }
 
 func handler2(c ctx.ReqCxtI) {
@@ -48,12 +53,17 @@ func handler5(c ctx.ReqCxtI) {
 	c.JSON(200, "XXX")
 }
 
+func upload(c ctx.ReqCxtI) {
+	c.SaveLocalFile("/Users/hua/go/src/github.com/huaxr/rx/example/upload")
+	c.JSON(200, "xxx")
+}
+
 // std epoll
 func main() {
 
-	logger.Log.Critical("aaa", )
-	logger.Log.Error("bbb", )
-	logger.Log.Warning("ccc", )
+	logger.Log.Critical("aaa")
+	logger.Log.Error("bbb")
+	logger.Log.Warning("ccc")
 	logger.Log.Info("ddd %v", "sss")
 	server := ctx.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
@@ -71,6 +81,22 @@ func main() {
 	sub2 := sub.Group("/v3", handler3)
 	sub2.Register("get", "/eee", last)
 
-	ctx.Register("post", "/ccc", handler1, handler2, handler5)
-	ctx.Register("get", "/ccc", handler1, handler2, handler4)
+	ctx.Register("post", "/ccc", handler5)
+	ctx.Register("post", "/upload", upload)
+}
+
+func main2() {
+	r := gin.Default()
+	r.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "pong",
+		})
+	})
+	r.Run() // listen and serve on 0.0.0.0:8080
+}
+
+func x(c *gin.Context) {
+	c.File("/")
+	//c.FormFile()
+
 }

@@ -4,12 +4,14 @@
 
 package ctx
 
+import "C"
 import (
-	"github.com/huaxr/rx/logger"
 	"net"
 	"os"
 	"sync"
 	"syscall"
+
+	"github.com/huaxr/rx/logger"
 
 	"go.uber.org/atomic"
 )
@@ -158,13 +160,14 @@ func (srv *loopServer) loopRead(c *conn) error {
 		return nil
 	}
 
-	reqContext := wrapRequest(c.in)
-	reqContext.mod = EPoll
-	putContext(reqContext)
-	reqContext.setClientAddr(c.connInfo)
-
-	res := reqContext.execute()
-	c.out = res.rspToBytes()
+	//reqContext := wrapRequest(c.in)
+	//reqContext.mod = EPoll
+	//putContext(reqContext)
+	//reqContext.setClientAddr(c.connInfo)
+	//
+	//res := reqContext.execute()
+	//c.out = res.rspToBytes()
+	c.out = wrapEPoll(c.in)
 
 	if len(c.out) != 0 || c.signal != None {
 		srv.poll.ChangeRW(c.sock)

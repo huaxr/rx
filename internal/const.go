@@ -5,7 +5,7 @@
 package internal
 
 const (
-	PieceSize = 1<<10 + 3
+	PieceSize = 1000 * 10 // 100K
 
 	WorkerSize = 1 << 4
 	ServerSize = 1 << 2

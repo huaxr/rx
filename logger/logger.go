@@ -11,14 +11,15 @@ import (
 )
 
 type Logger interface {
+	Recovery(format string, val ...interface{})
 
-	Critical(format string,val ...interface{})
+	Critical(format string, val ...interface{})
 
-	Error(format string,val ...interface{})
+	Error(format string, val ...interface{})
 
-	Warning(format string,val ...interface{})
+	Warning(format string, val ...interface{})
 
-	Info(format string,val ...interface{})
+	Info(format string, val ...interface{})
 }
 
 var Log Logger
@@ -34,11 +35,12 @@ const (
 	PURPLE
 )
 
-var colorSet = map[string]COLOR {
+var colorSet = map[string]COLOR{
+	"Recovery": RED,
 	"Critical": RED,
-	"Error": PURPLE,
-	"Warning": YELLOW,
-	"Info":  GREEN,
+	"Error":    PURPLE,
+	"Warning":  YELLOW,
+	"Info":     GREEN,
 }
 
 func InitLogger(l Logger) {
@@ -51,10 +53,9 @@ func init() {
 }
 
 type log struct {
-
 }
 
-func debugLine(){
+func debugLine() {
 	// 1. func name
 	_, file, line, ok := runtime.Caller(2)
 	if ok {
@@ -68,12 +69,17 @@ func (l *log) do(level string, format string, val ...interface{}) {
 	fmt.Fprint(reqWriter, fmt.Sprintf("\x1b[%dm%s\x1b[0m", colorSet[level], res))
 }
 
+func (l *log) Recovery(format string, val ...interface{}) {
+	debugLine()
+	l.do("Recovery", format, val...)
+}
+
 func (l *log) Critical(format string, val ...interface{}) {
 	debugLine()
 	l.do("Critical", format, val...)
 }
 
-func (l *log) Error(format string,val ...interface{}) {
+func (l *log) Error(format string, val ...interface{}) {
 	debugLine()
 	l.do("Error", format, val...)
 }
@@ -82,6 +88,6 @@ func (l *log) Warning(format string, val ...interface{}) {
 	l.do("Warning", format, val...)
 }
 
-func (l *log) Info(format string,val ...interface{}) {
+func (l *log) Info(format string, val ...interface{}) {
 	l.do("Info", format, val...)
 }

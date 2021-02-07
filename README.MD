@@ -14,6 +14,7 @@ RX is a dynamic configurable and assemble web framework based on Go.
 - [Epoll Kqueue](#Epoll-Kqueue)
 - [URL Parse](#URL-Parse)
 - [Body Parse](#Body-Parse)
+- [File Upload](#File-Upload)
 ---
 
 ## Dynamic middleware
@@ -61,6 +62,7 @@ ctx.Register("get", "/ccc", handler1, handler2, handler4)
   超时直接按照约定的超时策略中断流程， 并返回相关数据 
   - TTL策略: 可设置最大栈内调用深度， 可以极大简化维护栈内调用，方便debug，一旦handler执行次数超过 ttl 设定的阈值，
   将中断reqContext 并按照约定返回相关数据
+  - 异步策略: 设置handler为异步执行， 会往协程池丢送一次任务，并快速返回，任务静默运行。
   - panic策略: 
   - error 策略:
   - 兜底策略：
@@ -178,3 +180,13 @@ func handler5(ctx ctx.ReqCxtI) {
 ```
 
 ---
+
+## File Upload
+- 支持文件上传， 异步上传
+- todo: 支持 bytes 流上传
+```go
+func upload(c ctx.ReqCxtI) {
+	c.SaveLocalFile("dst path")
+	c.JSON(200, "xxx")
+}
+```

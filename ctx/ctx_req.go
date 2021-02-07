@@ -5,11 +5,16 @@
 package ctx
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
-	"errors"
+	"fmt"
+	"io"
+	"mime/multipart"
 	"net"
-	"net/url"
+	"net/http"
+	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,12 +29,7 @@ type ReqCxtI interface {
 	RspCtxI
 	AbortI
 	StrategyI
-	// GetHeaders
-	GetHeaders() map[string]interface{}
-	GetMethod() string
-	GetClientAddr() string
-	// GetBody return the request body bytes
-	GetBody() []byte
+
 	// Abort response with status
 	// setAbort can make the current flow stop.
 	// set the stop time & set the finished flag true
@@ -48,9 +48,13 @@ type ReqCxtI interface {
 
 	// RegisterStrategy register the customized strategy
 	RegisterStrategy(strategy *StrategyContext)
+
+	SaveLocalFile(dst string)
 }
 
 type mod int
+
+var reg = regexp.MustCompile(`Content-Length: (.*?)\r\n`)
 
 const (
 	Std mod = iota
@@ -64,25 +68,14 @@ type RequestContext struct {
 	*abortContext
 	*StrategyContext
 
-	conn net.Conn
-	mod  mod
-	// method request method
-	method string
-	// path request location
-	path string
-	// clientAddr the remote addr
-	clientAddr net.Addr
+	mod mod
+	// raw connection here when mod == Std
+	conn    net.Conn
+	request *http.Request
+
 	// time request time time.now()
-	time time.Time
-	// headers request header key-value
-	reqHeaders map[string]interface{}
-	// reqParameters the request raw query parse to map
-	reqParameters url.Values
-	// body request body bytes
-	reqBody bytes.Buffer
-
+	time       time.Time
 	flashStore *sync.Map
-
 	// abort will set the it true
 	finished *atomic.Bool
 	// stack record the executable func
@@ -101,7 +94,6 @@ var reqCtxPool = sync.Pool{
 				rspBody:    []byte{},
 				body:       bytes.Buffer{},
 			},
-			reqHeaders: make(map[string]interface{}),
 		}
 	},
 }
@@ -109,37 +101,6 @@ var reqCtxPool = sync.Pool{
 func putContext(rc *RequestContext) {
 	rc.free()
 	reqCtxPool.Put(rc)
-}
-
-func (r *RequestContext) getPath(real bool) string {
-	if real {
-		return r.path
-	}
-	return strings.ToLower(r.method) + "::" + r.path
-}
-
-func (r *RequestContext) GetHeaders() map[string]interface{} {
-	return r.reqHeaders
-}
-
-func (r *RequestContext) GetMethod() string {
-	return r.method
-}
-
-func (r *RequestContext) GetBody() []byte {
-	return r.reqBody.Bytes()
-}
-
-func (r *RequestContext) GetClientAddr() string {
-	if r.clientAddr == nil {
-		return ""
-	}
-	return r.clientAddr.String()
-}
-
-// SetClientAddr set the address for logger usage
-func (r *RequestContext) setClientAddr(addr net.Addr) {
-	r.clientAddr = addr
 }
 
 func (r *RequestContext) setAbort(status int16, message interface{}) {
@@ -165,7 +126,6 @@ func (r *RequestContext) free() *RequestContext {
 	//r.StrategyContext = nil
 	// if the openStrategy did not set false, it will trigger nil pointer
 	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
-	r.reqHeaders = map[string]interface{}{}
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
 	r.openStrategy.Store(false)
@@ -174,81 +134,105 @@ func (r *RequestContext) free() *RequestContext {
 	return r
 }
 
-func wrapRequest(buffer []byte) *RequestContext {
-	var err error
+func wrapStd(conn net.Conn) {
+
+	var buffer bytes.Buffer
+	defer buffer.Reset()
+	var flag = false
+	var buf = make([]byte, internal.PieceSize)
+	for {
+		// SetReadDeadline will block read until the deadline
+		// for the best efficiency, if the first buf content-length
+		// small enough, just break the read option then.
+		err := conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		if err != nil {
+			logger.Log.Error(err.Error())
+			_ = conn.Close()
+			return
+		}
+
+		n, err := conn.Read(buf[:])
+		if err != nil {
+			// timeout err just break
+			break
+		}
+		buffer.Write(buf[:n])
+
+		if !flag {
+			match := reg.FindAllStringSubmatch(buffer.String(), 1)
+			// no content-length means the body is small enough
+			// to consider read. Or get-method request, just
+			// break it.
+			if match == nil {
+				break
+			}
+			length, err := strconv.Atoi(match[0][1])
+			if err != nil {
+				logger.Log.Error(err.Error())
+				break
+			}
+			if length < internal.PieceSize {
+				break
+			}
+			flag = true
+		}
+	}
+	buf = buf[:0]
+
+	if buffer.Len() == 0 {
+		_ = conn.Close()
+		logger.Log.Warning("buffer size is 0, loop again")
+		return
+	}
+
 	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.time = time.Now()
 	reqCtx.finished = atomic.NewBool(false)
 	reqCtx.flashStore = new(sync.Map)
 
-	headerAndBody := bytes.Split(buffer, []byte("\r\n\r\n"))
-	if len(headerAndBody) != 2 {
-		goto ABORT
-	}
-	err = reqCtx.wrapRequestHeader(headerAndBody[0])
+	reqCtx.mod = Std
+	reqCtx.conn = conn
+
+	r, err := http.ReadRequest(bufio.NewReader(&buffer))
 	if err != nil {
-		goto ABORT
+		logger.Log.Error("err: %v, buffer size: %d", err.Error(), buffer.Len())
+		reqCtx.setAbort(403, "Bad Request")
 	}
+	reqCtx.request = r
+	reqCtx.execute()
+	putContext(reqCtx)
 
-	if len(headerAndBody[1]) > 0 {
-		err = reqCtx.wrapRequestBody(headerAndBody[1])
-		if err != nil {
-			goto ABORT
-		}
-	}
-	return reqCtx
-
-ABORT:
-	reqCtx.setAbort(403, "Bad Request")
-	return reqCtx
 }
 
-func (rc *RequestContext) wrapRequestHeader(header []byte) error {
-	headerLines := bytes.Split(header, []byte("\r\n"))
-	if len(headerLines) == 0 {
-		return errors.New("headerLines invalid")
-	}
-
-	methodAndPath := string(headerLines[0])
-	firstLine := strings.Split(methodAndPath, " ")
-	if len(firstLine) != 3 {
-		return errors.New("err first line parse")
-	}
-	queryUrl, err := url.Parse(firstLine[1])
+func wrapEPoll(buf []byte) []byte {
+	reqCtx := reqCtxPool.Get().(*RequestContext)
+	reqCtx.time = time.Now()
+	reqCtx.finished = atomic.NewBool(false)
+	reqCtx.flashStore = new(sync.Map)
+	reqCtx.mod = EPoll
+	r, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(buf)))
 	if err != nil {
-		logger.Log.Error("err when handler the query path")
-		return err
+		logger.Log.Error(err.Error())
+		return nil
 	}
-	// delete version
-	params, err := url.ParseQuery(queryUrl.RawQuery)
-	if err != nil {
-		logger.Log.Error("err when handler the query raw path")
-		return err
-	}
-	rc.reqParameters = params
-	rc.method, rc.path = firstLine[0], queryUrl.Path
-
-	for _, line := range headerLines[1:] {
-		pair := strings.SplitN(string(line), ":", 2)
-		if len(pair) != 2 {
-			continue
-		}
-		// using ToLower in order to avoid that when use ab test.
-		// the request header is not formatted like usually.
-		// Context-type/Content-Type ex.
-		rc.reqHeaders[strings.ToLower(pair[0])] = strings.TrimSpace(pair[1])
-	}
-	return nil
+	reqCtx.request = r
+	res := reqCtx.execute()
+	putContext(reqCtx)
+	return res.rspBody
 }
 
-func (rc *RequestContext) wrapRequestBody(body []byte) error {
-	var buffer bytes.Buffer
-	_, err := buffer.Write(body)
-	if err != nil {
-		return err
+func (rc *RequestContext) GetMethod() string {
+	if rc.request == nil {
+		return ""
 	}
-	rc.reqBody = buffer
-	return nil
+	return rc.request.Method
+}
+
+func (rc *RequestContext) GetPath() string {
+	if rc.request == nil {
+		return ""
+	}
+	return rc.request.RequestURI
 }
 
 func (rc *RequestContext) finish() {
@@ -257,11 +241,11 @@ func (rc *RequestContext) finish() {
 		rc.finished.Store(true)
 		logger.ReqLog(&internal.RequestLogger{
 			StartTime: rc.time,
-			StopTime: rc.responseContext.time,
-			Ip: rc.GetClientAddr(),
-			Method: rc.GetMethod(),
-			Path: rc.getPath(true),
-			Status: rc.status,
+			StopTime:  rc.responseContext.time,
+			Ip:        rc.conn.RemoteAddr().String(),
+			Method:    rc.GetMethod(),
+			Path:      rc.GetPath(),
+			Status:    rc.status,
 		})
 	}
 }
@@ -292,6 +276,58 @@ func (rc *RequestContext) connSend() {
 		_ = rc.conn.Close()
 	}
 	_ = rc.conn.Close()
+}
+
+func (rc *RequestContext) setMemorySize(size int64) {
+	err := rc.request.ParseMultipartForm(size)
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return
+	}
+}
+
+func (rc *RequestContext) GetFileName() string {
+	_, header, err := rc.request.FormFile("file")
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return ""
+	}
+	return header.Filename
+}
+
+func (rc *RequestContext) GetFile() multipart.File {
+	file, _, err := rc.request.FormFile("file")
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return nil
+	}
+	return file
+}
+
+func (rc *RequestContext) SaveLocalFile(dst string) {
+	file, header, err := rc.request.FormFile("file")
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return
+	}
+	path := dst + "/" + header.Filename
+	cur, err := os.Create(path)
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return
+	}
+	defer cur.Close()
+	_, err = io.Copy(cur, file)
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		logger.Log.Error(err.Error())
+		return
+	}
+	fmt.Println("file size is ", fi.Size(), err)
 }
 
 func (rc *RequestContext) asyncExecute(async chan bool) {
@@ -331,19 +367,19 @@ func (rc *RequestContext) asyncExecute(async chan bool) {
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
 // stack peek and execute it when next pop.
-func (rc *RequestContext) execute() (response *responseContext){
+func (rc *RequestContext) execute() (response *responseContext) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Log.Critical(string(internal.PrintStack()))
+			logger.Log.Recovery(string(internal.PrintStack()))
 		}
-		if !rc.Async {
+		if !rc.openStrategy.Load() || !rc.Async {
 			rc.checkAbort()
 			rc.finish()
 			response = rc.responseContext
 			rc.connSend()
 		}
 	}()
-
+	// initStack will set the *stack and abort status.
 	rc.initStack()
 	// if free not set abortContext nil, cached abort status will
 	// terminate this abnormal state.
@@ -360,16 +396,18 @@ func (rc *RequestContext) execute() (response *responseContext){
 				done := make(chan bool, 1)
 				go rc.asyncExecute(done)
 				select {
-				case <- done:
+				case <-done:
 					close(done)
-				case <- rc.timeoutSignal:
+				case <-rc.timeoutSignal:
 					rc.handleTimeOut(rc)
 				}
 				return
 			}
 
 			if rc.Async {
-				done := make(chan bool)
+				// chan with buffer, otherwise block.
+				done := make(chan bool, 1)
+				// todo: using goroutine pool to manager the counts.
 				go rc.asyncExecute(done)
 				return
 			}
@@ -453,7 +491,8 @@ func (rc *RequestContext) initStack() {
 		rc.stack = handles
 		return
 	}
-	handles = copyStack(rc.getPath(false))
+	key := rc.getPathKey()
+	handles = copyStack(key)
 	if handles == nil {
 		handles = newStack()
 		handles.Push(defaultHANDLERS[404])
@@ -461,30 +500,16 @@ func (rc *RequestContext) initStack() {
 	rc.stack = handles
 }
 
-func (rc *RequestContext) GetQuery(key, dft string) string {
-	if val := rc.reqParameters.Get(key); val != "" {
-		return val
-	}
-	return dft
+func (rc *RequestContext) getPathKey() string {
+	return fmt.Sprintf("%s::", strings.ToLower(rc.request.Method)) + rc.request.RequestURI
 }
 
 func (rc *RequestContext) ParseBody(dst interface{}) error {
-	contentType, ok := rc.reqHeaders["content-type"]
-	if !ok {
-		contentType = internal.MIMEPlain
-	}
-	switch contentType {
-	case internal.MIMEPlain:
-
-	case internal.MIMEJSON:
-		return json.Unmarshal(rc.GetBody(), &dst)
-
-	case internal.MIMEMultipartPOSTForm:
-
-	default:
-
-	}
 	return nil
+}
+
+func (rc *RequestContext) GetQuery(key, dft string) string {
+	return ""
 }
 
 func (rc *RequestContext) Abort(status int16, message interface{}) {
