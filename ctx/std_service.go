@@ -17,10 +17,8 @@ import (
 type stdServer struct {
 	//reader io.Reader
 	listener net.Listener
-	// the channel of socket err, EOF .eg
-	acceptErr chan error
-	workers   *WorkerPool
-	wg        *sync.WaitGroup
+	workers  *WorkerPool
+	wg       *sync.WaitGroup
 }
 
 func (t *stdServer) GetAddr() string {
@@ -31,17 +29,10 @@ func (t *stdServer) GetNetwork() string {
 	return t.listener.Addr().Network()
 }
 
-func (t *stdServer) handlerErr() {
-	for i := range t.acceptErr {
-		logger.Log.Error("TcpSocket err:", i)
-	}
-}
-
 func newServer(network string, addr string) *stdServer {
 	t := new(stdServer)
 	once := sync.Once{}
 	once.Do(func() {
-		t.acceptErr = make(chan error, 1024)
 		listen, err := net.Listen(network, addr)
 		if err != nil {
 			panic(err)
@@ -50,7 +41,6 @@ func newServer(network string, addr string) *stdServer {
 		t.wg = &sync.WaitGroup{}
 		t.workers = NewWorkerPool(t)
 	})
-	go t.handlerErr()
 	return t
 
 }
@@ -63,9 +53,8 @@ func (t *stdServer) startServer() {
 			defer wg.Done()
 			for {
 				rawConn, err := t.listener.Accept()
-				//_ = rawConn.SetReadDeadline(time.Time{})
 				if err != nil {
-					t.acceptErr <- err
+					logger.Log.Error("Err listening, %v", err.Error())
 					continue
 				}
 				t.workers.connChannel <- rawConn
@@ -76,7 +65,6 @@ func (t *stdServer) startServer() {
 		t.wg.Wait()
 		t.workers.wg.Wait()
 	}()
-
 }
 
 func NewStdServer(addr string) *stdServer {

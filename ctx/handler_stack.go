@@ -7,13 +7,15 @@ package ctx
 import (
 	"sync"
 
+	"go.uber.org/atomic"
+
 	"github.com/huaxr/rx/internal"
 )
 
 type (
 	stack struct {
 		top    *node
-		length int
+		length *atomic.Int32
 		lock   *sync.RWMutex
 	}
 
@@ -41,17 +43,17 @@ func copyStack(str string) *stack {
 // NewStack return the new instance of stack.
 // when sync.Poll cache the stack may cause problem here.
 func newStack() *stack {
-	return &stack{nil, 0, &sync.RWMutex{}}
+	return &stack{nil, atomic.NewInt32(0), &sync.RWMutex{}}
 }
 
 // Len Return the number of items in the stack
-func (this *stack) Len() int {
-	return this.length
+func (this *stack) Len() int32 {
+	return this.length.Load()
 }
 
 // Peek View the top item on the stack
 func (this *stack) Peek() handlerFunc {
-	if this.length == 0 {
+	if this.length.Load() == 0 {
 		return nil
 	}
 	return this.top.value
@@ -61,12 +63,12 @@ func (this *stack) Peek() handlerFunc {
 func (this *stack) Pop() handlerFunc {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	if this.length == 0 {
+	if this.length.Load() == 0 {
 		return nil
 	}
 	n := this.top
 	this.top = n.prev
-	this.length--
+	this.length.Dec()
 	return n.value
 }
 
@@ -76,5 +78,5 @@ func (this *stack) Push(value handlerFunc) {
 	defer this.lock.Unlock()
 	n := &node{value, this.top}
 	this.top = n
-	this.length++
+	this.length.Inc()
 }

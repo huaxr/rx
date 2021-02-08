@@ -13,12 +13,8 @@ type StrategyI interface {
 	SetTTL(t int32)
 }
 
-type PanicI interface {
-	Do()
-}
-
 type signal struct {
-	timeout bool
+	timeout       bool
 	timeoutSignal <-chan time.Time
 }
 
@@ -35,9 +31,6 @@ type StrategyContext struct {
 	Timeout time.Duration
 
 	Async bool
-
-	// panic happens in execute function
-	Panic PanicI
 
 	signal
 }
@@ -67,10 +60,11 @@ func (s *StrategyContext) wrapDefault() {
 	if s.Timeout <= 0 {
 		s.Timeout = 0xff * time.Hour
 		s.timeout = false
+	} else {
+		// when set the strategy, init the timeout chan
+		s.timeoutSignal = time.After(s.Timeout)
+		s.timeout = true
 	}
-
-	// when set the strategy, init the timeout chan
-	s.timeoutSignal = time.After(s.Timeout)
 }
 
 func (s *StrategyContext) SetTimeOut(t time.Duration) {

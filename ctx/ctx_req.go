@@ -76,14 +76,13 @@ type RequestContext struct {
 	// time request time time.now()
 	time       time.Time
 	flashStore *sync.Map
-	// abort will set the it true
-	finished *atomic.Bool
+
 	// stack record the executable func
 	stack *stack
-	// whether open strategyContext in this context
-	// when calling RegisterStrategy, this flag will
-	// turn to true.
-	openStrategy atomic.Bool
+
+	// abort will set the it true
+	// finished flag represent that the request has done.
+	finished *atomic.Bool
 }
 
 var reqCtxPool = sync.Pool{
@@ -103,6 +102,7 @@ func putContext(rc *RequestContext) {
 	reqCtxPool.Put(rc)
 }
 
+// Abort will set the finished flag true
 func (r *RequestContext) setAbort(status int16, message interface{}) {
 	r.status = status
 	switch message.(type) {
@@ -112,11 +112,11 @@ func (r *RequestContext) setAbort(status int16, message interface{}) {
 		r.responseContext.rspHeaders["Content-Type"] = internal.MIMEJSON
 	}
 	r.abortContext = r.NewAbort(status, message)
-	r.finish()
+	r.finished.Store(true)
 }
 
 func (r *RequestContext) isAbort() bool {
-	return r.abortContext != nil || r.finished.Load()
+	return r.abortContext != nil
 }
 
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
@@ -128,7 +128,6 @@ func (r *RequestContext) free() *RequestContext {
 	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
-	r.openStrategy.Store(false)
 	r.finished.Store(false)
 	//r.StrategyContext = openDefaultStrategy()
 	return r
@@ -141,7 +140,6 @@ func (r *RequestContext) init() {
 }
 
 func wrapStd(conn net.Conn) {
-
 	var buffer bytes.Buffer
 	defer buffer.Reset()
 	var flag = false
@@ -150,7 +148,7 @@ func wrapStd(conn net.Conn) {
 		// SetReadDeadline will block read until the deadline
 		// for the best efficiency, if the first buf content-length
 		// small enough, just break the read option then.
-		err := conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		err := conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		if err != nil {
 			logger.Log.Error(err.Error())
 			_ = conn.Close()
@@ -187,7 +185,6 @@ func wrapStd(conn net.Conn) {
 
 	if buffer.Len() == 0 {
 		_ = conn.Close()
-		logger.Log.Warning("buffer size is 0, loop again")
 		return
 	}
 
@@ -205,8 +202,7 @@ func wrapStd(conn net.Conn) {
 		reqCtx.setRequest(r)
 	}
 	reqCtx.execute()
-	putContext(reqCtx)
-
+	//putContext(reqCtx)
 }
 
 func wrapEPoll(buf []byte) []byte {
@@ -220,7 +216,6 @@ func wrapEPoll(buf []byte) []byte {
 	}
 	reqCtx.request = r
 	res := reqCtx.execute()
-	putContext(reqCtx)
 	return res.rspBody
 }
 
@@ -251,18 +246,18 @@ func (rc *RequestContext) GetPath() string {
 }
 
 func (rc *RequestContext) finish() {
-	if !rc.finished.Load() {
-		rc.SetStopTime(time.Now())
-		rc.finished.Store(true)
-		logger.ReqLog(&internal.RequestLogger{
-			StartTime: rc.time,
-			StopTime:  rc.responseContext.time,
-			Ip:        rc.conn.RemoteAddr().String(),
-			Method:    rc.GetMethod(),
-			Path:      rc.GetPath(),
-			Status:    rc.status,
-		})
-	}
+	rc.SetStopTime(time.Now())
+	rc.finished.Store(true)
+	logger.ReqLog(&internal.RequestLogger{
+		StartTime: rc.time,
+		StopTime:  rc.responseContext.time,
+		Ip:        rc.conn.RemoteAddr().String(),
+		Method:    rc.GetMethod(),
+		Path:      rc.GetPath(),
+		Status:    rc.status,
+	})
+	// return back the context poll
+	putContext(rc)
 }
 
 func (rc *RequestContext) checkAbort() bool {
@@ -279,18 +274,6 @@ func (rc *RequestContext) isStd() bool {
 
 func (rc *RequestContext) isEPoll() bool {
 	return rc.mod == EPoll
-}
-
-func (rc *RequestContext) connSend() {
-	if !rc.isStd() {
-		return
-	}
-	_, err := rc.conn.Write(rc.responseContext.rspToBytes())
-	if err != nil {
-		logger.Log.Error(err.Error())
-		_ = rc.conn.Close()
-	}
-	_ = rc.conn.Close()
 }
 
 func (rc *RequestContext) setMemorySize(size int64) {
@@ -345,20 +328,34 @@ func (rc *RequestContext) SaveLocalFile(dst string) {
 	fmt.Println("file size is ", fi.Size(), err)
 }
 
+func (rc *RequestContext) connSend() {
+	if !rc.isStd() {
+		return
+	}
+	_, err := rc.conn.Write(rc.responseContext.rspToBytes())
+	if err != nil {
+		logger.Log.Error(err.Error())
+		_ = rc.conn.Close()
+	}
+	_ = rc.conn.Close()
+}
+
 func (rc *RequestContext) asyncExecute(async chan bool) {
 	defer func() {
 		rc.checkAbort()
 		rc.finish()
 		rc.connSend()
+		close(async)
 	}()
 
 	// response data received
-	for !rc.isAbort() && rc.stack.length > 0 {
+	for rc.stack.length.Load() > 0 {
 		// demanding processing should be using handlerFunc() to return
 		// a chan bool to notify whether this stack has been down.
-		rc.stack.Pop()(rc)
+		h := rc.stack.Pop()
+		h(rc)
 
-		if len(rc.rspBody) > 0 && rc.status != 0 {
+		if rc.isAbort() || rc.finished.Load() {
 			// if asyncSignal equals nil, this goroutine
 			// will perpetual block eternal die, which will
 			// cause memory leak, using runtime.NumGoroutine
@@ -387,32 +384,31 @@ func (rc *RequestContext) execute() (response *responseContext) {
 		if r := recover(); r != nil {
 			logger.Log.Recovery(string(internal.PrintStack()))
 		}
-		if !rc.openStrategy.Load() || !rc.Async {
-			rc.checkAbort()
-			rc.finish()
-			response = rc.responseContext
-			rc.connSend()
+		if rc.StrategyContext != nil && (rc.Async || rc.timeout) {
+			return
 		}
+		rc.checkAbort()
+		rc.finish()
+		response = rc.responseContext
+		rc.connSend()
 	}()
 	// initStack will set the *stack and abort status.
 	rc.initStack()
-	// if free not set abortContext nil, cached abort status will
-	// terminate this abnormal state.
-	for !rc.isAbort() && rc.stack.length > 0 {
-		if !rc.openStrategy.Load() {
-			// no strategy.
+	// not abort, not finished check with the available stack.
+	for !rc.isAbort() && !rc.finished.Load() && rc.stack.length.Load() > 0 {
+		// not using strategy.
+		if rc.StrategyContext == nil {
 			rc.stack.Pop()(rc)
 		} else {
-			// using timeout. using async.
+			// using timeout. using async, ttl...
 			if rc.timeout {
+				done := make(chan bool, 1)
 				// done channel with buffer, attention here.
 				// if no buffer here, some goroutines will
 				// deadly block in the end.
-				done := make(chan bool, 1)
 				go rc.asyncExecute(done)
 				select {
 				case <-done:
-					close(done)
 				case <-rc.timeoutSignal:
 					rc.handleTimeOut(rc)
 				}
@@ -420,8 +416,8 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			}
 
 			if rc.Async {
-				// chan with buffer, otherwise block.
 				done := make(chan bool, 1)
+				// chan with buffer, otherwise block.
 				// todo: using goroutine pool to manager the counts.
 				go rc.asyncExecute(done)
 				return
@@ -433,7 +429,6 @@ func (rc *RequestContext) execute() (response *responseContext) {
 				return
 			}
 			rc.decTTL()
-
 		}
 	}
 	return
@@ -541,6 +536,5 @@ func (rc *RequestContext) RegisterStrategy(strategy *StrategyContext) {
 	} else {
 		strategy.wrapDefault()
 	}
-	rc.openStrategy.Store(true)
 	rc.StrategyContext = strategy
 }

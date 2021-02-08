@@ -8,8 +8,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/huaxr/rx/logger"
 	"time"
+
+	"github.com/huaxr/rx/logger"
 
 	"github.com/huaxr/rx/internal"
 )

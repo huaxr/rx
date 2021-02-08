@@ -24,7 +24,7 @@ func handler1(c ctx.ReqCxtI) {
 
 func handler2(c ctx.ReqCxtI) {
 	// 使用异步来标识异步处理逻辑
-	time.Sleep(2 * time.Second)
+	//time.Sleep(2 * time.Second)
 	logger.Log.Info("execute handler2")
 }
 
@@ -61,6 +61,10 @@ func upload(c ctx.ReqCxtI) {
 	c.JSON(200, "xxx")
 }
 
+func ping(c ctx.ReqCxtI) {
+	c.JSON(200, "pong")
+}
+
 // std epoll
 func main() {
 	server := ctx.NewServer("std", "127.0.0.1:9999")
@@ -81,6 +85,8 @@ func main() {
 
 	ctx.Register("post", "/ccc", handler5)
 	ctx.Register("post", "/upload", upload)
+
+	ctx.Register("get", "/ping", ping)
 }
 
 func main2() {
