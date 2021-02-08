@@ -64,6 +64,10 @@ ctx.Register("get", "/ccc", handler1, handler2, handler4)
   - TTL策略: 可设置最大栈内调用深度， 可以极大简化维护栈内调用，方便debug，一旦handler执行次数超过 ttl 设定的阈值，
   将中断reqContext 并按照约定返回相关数据
   - 异步策略: 设置handler为异步执行， 会往协程池丢送一次任务，并快速返回，任务静默运行。
+  - 安全策略: 设置安全检查
+  - 熔断策略: 设置熔断检查
+  
+ todo:
   - panic策略: 
   - error 策略:
   - 兜底策略：

@@ -405,11 +405,14 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			//}
 
 			// stop and set abort whether score a hit of the Fusing.Do() method.
-			if rc.Fusing != nil {
-				if rc.Fusing.Do() {
-					rc.setAbort(403, "fusing deny")
-					return
-				}
+			if rc.Fusing != nil && rc.Fusing.Do() {
+				rc.setAbort(403, "fusing deny")
+				return
+			}
+
+			if rc.Security != nil && rc.Security.Do() {
+				rc.setAbort(403, "security deny")
+				return
 			}
 
 			// using timeout. using async, ttl...

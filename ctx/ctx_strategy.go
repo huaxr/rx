@@ -45,6 +45,10 @@ type StrategyContext struct {
 	// or other purpose that you made.
 	Fusing ControlStrategy
 
+	// for security reason, attack recognition or any other optional
+	// functions can be made && check here.
+	Security ControlStrategy
+
 
 	signal
 }
