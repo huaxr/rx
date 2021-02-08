@@ -16,6 +16,12 @@ type StrategyI interface {
 type signal struct {
 	timeout       bool
 	timeoutSignal <-chan time.Time
+
+	//demotion bool
+}
+
+type ControlStrategy interface {
+	Do() bool
 }
 
 // strategy is under developing now, it functions will enhanced later
@@ -31,6 +37,14 @@ type StrategyContext struct {
 	Timeout time.Duration
 
 	Async bool
+
+	// degradation the current request with a custom Do option.
+	//Demotion ControlStrategy
+
+	// fusing resistor to protect the third part dependency.
+	// or other purpose that you made.
+	Fusing ControlStrategy
+
 
 	signal
 }

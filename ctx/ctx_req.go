@@ -400,6 +400,18 @@ func (rc *RequestContext) execute() (response *responseContext) {
 		if rc.StrategyContext == nil {
 			rc.stack.Pop()(rc)
 		} else {
+			//if rc.Demotion != nil {
+			//	rc.Demotion.Do()
+			//}
+
+			// stop and set abort whether score a hit of the Fusing.Do() method.
+			if rc.Fusing != nil {
+				if rc.Fusing.Do() {
+					rc.setAbort(403, "fusing deny")
+					return
+				}
+			}
+
 			// using timeout. using async, ttl...
 			if rc.timeout {
 				done := make(chan bool, 1)
