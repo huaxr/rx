@@ -15,6 +15,7 @@ RX is a dynamic configurable and assemble web framework based on Go.
 - [URL Parse](#URL-Parse)
 - [Body Parse](#Body-Parse)
 - [File Upload](#File-Upload)
+- [Benchmark](#Benchmark)
 ---
 
 ## Dynamic middleware
@@ -189,4 +190,50 @@ func upload(c ctx.ReqCxtI) {
 	c.SaveLocalFile("dst path")
 	c.JSON(200, "xxx")
 }
+```
+
+---
+
+### Benchmark
+- 压测比较
+- rx 4300.
+- gin 3900.
+- other xxx.
+```
+Server Software:
+Server Hostname:        localhost
+Server Port:            9999
+
+Document Path:          /ping
+Document Length:        6 bytes
+
+Concurrency Level:      100
+Time taken for tests:   0.224 seconds
+Complete requests:      1000
+Failed requests:        5
+   (Connect: 0, Receive: 0, Length: 5, Exceptions: 0)
+Total transferred:      40795 bytes
+HTML transferred:       5970 bytes
+Requests per second:    4468.99 [#/sec] (mean)
+Time per request:       22.376 [ms] (mean)
+Time per request:       0.224 [ms] (mean, across all concurrent requests)
+Transfer rate:          178.04 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0   10   3.9     10      20
+Processing:     2   11   3.6     11      35
+Waiting:        0   10   3.6     10      20
+Total:          6   22   6.0     21      49
+
+Percentage of the requests served within a certain time (ms)
+  50%     21
+  66%     23
+  75%     26
+  80%     27
+  90%     30
+  95%     32
+  98%     33
+  99%     33
+ 100%     49 (longest request)
 ```
