@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package ctx
+package engine
 
 import "C"
 import (
@@ -10,6 +10,8 @@ import (
 	"os"
 	"sync"
 	"syscall"
+
+	"github.com/huaxr/rx/ctx"
 
 	"github.com/huaxr/rx/logger"
 
@@ -28,8 +30,8 @@ type loopServer struct {
 	btsPool *sync.Pool
 
 	//wg sync.WaitGroup
-	//handlers map[string][]ctx.HandlerFunc
-	//groupHandlers ctx.HandlerFunc
+	//handlers map[string][]engine.HandlerFunc
+	//groupHandlers engine.HandlerFunc
 }
 
 func (srv *loopServer) Run() {
@@ -167,7 +169,7 @@ func (srv *loopServer) loopRead(c *conn) error {
 	//
 	//res := reqContext.execute()
 	//c.out = res.rspToBytes()
-	c.out = wrapEPoll(c.in)
+	c.out = ctx.WapEPoll(c.in)
 
 	if len(c.out) != 0 || c.signal != None {
 		srv.poll.ChangeRW(c.sock)
@@ -183,8 +185,4 @@ func (srv *loopServer) Close() {
 	_ = srv.poll.Close()
 	_ = srv.socket.Close()
 	_ = srv.sockFile.Close()
-}
-
-func (srv *loopServer) Use(handlerFunc ...handlerFunc) {
-
 }

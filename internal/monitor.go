@@ -4,8 +4,23 @@
 
 package internal
 
-import "runtime"
+import (
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"runtime/pprof"
+)
+
+func init() {
+	go func() {
+		_ = http.ListenAndServe(":9998", nil)
+	}()
+}
 
 func Init() {
-	runtime.NumGoroutine()
+	cpuProfile, _ := os.Create("cpu_profile")
+	_ = pprof.StartCPUProfile(cpuProfile)
+	memProfile, _ := os.Create("mem_profile")
+	_ = pprof.WriteHeapProfile(memProfile)
+	defer pprof.StopCPUProfile()
 }

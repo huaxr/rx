@@ -2,25 +2,29 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"runtime"
 	"time"
+
+	"github.com/huaxr/rx/ctx"
 
 	"github.com/huaxr/rx/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/huaxr/rx/ctx"
-)
+	"github.com/huaxr/rx/engine"
 
+	_ "net/http/pprof"
+)
 
 func handler1(c ctx.ReqCxtI) {
 	//c.SetDefaultTimeOut(1 * time.Second)
 	//c.SetDefaultTTL(4)
 	logger.Log.Info("execute handler1", runtime.NumGoroutine())
-	c.RegisterStrategy(
-		&ctx.StrategyContext{Ttl: 4,
-			Async: true,
-			//Timeout: 1*time.Second,
-		})
+	//c.RegisterStrategy(
+	//	&ctx.StrategyContext{Ttl: 4,
+	//		Async: false,
+	//		//Timeout: 1*time.Second,
+	//	})
 }
 
 func handler2(c ctx.ReqCxtI) {
@@ -44,8 +48,8 @@ func last(c ctx.ReqCxtI) {
 	//err := c.ParseBody(&post)
 	c.JSON(200, map[string]interface{}{"time": time.Now()})
 	logger.Log.Info("execute last")
-	//ctx.Next(handler3)
-	//ctx.Abort(200, "sorry")
+	//engine.Next(handler3)
+	//engine.Abort(200, "sorry")
 }
 
 func handler4(c ctx.ReqCxtI) {
@@ -63,12 +67,17 @@ func upload(c ctx.ReqCxtI) {
 }
 
 func ping(c ctx.ReqCxtI) {
-	c.JSON(200, "pong")
+	c.JSON(200, map[string]string{"message": "pong"})
 }
 
 // std epoll
 func main() {
-	server := ctx.NewServer("std", "127.0.0.1:9999")
+
+	go func() {
+		http.ListenAndServe("localhost:8888", nil)
+	}()
+
+	server := engine.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
 
 	ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {

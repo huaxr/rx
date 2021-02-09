@@ -16,8 +16,8 @@ import (
 //
 //type handlerCore struct {
 //	async IsAsync
-//	handlerFunc func(ctx ReqCxtI)
-//	handlerAsyncFunc func(ctx ReqCxtI) (done chan bool)
+//	handlerFunc func(engine ReqCxtI)
+//	handlerAsyncFunc func(engine ReqCxtI) (done chan bool)
 //}
 
 type handlerFunc func(ctx ReqCxtI)

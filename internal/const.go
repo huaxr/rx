@@ -6,9 +6,6 @@ package internal
 
 const (
 	PieceSize = 1000 * 10 // 100K
-
-	WorkerSize = 8
-	ServerSize = 4
 )
 
 const (

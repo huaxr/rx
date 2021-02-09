@@ -119,7 +119,7 @@ group.Register("get", "ddd", myhandler)
 ```go
 func handler(ctx ctx.ReqCxtI) {
 	log.Println("execute handler")
-	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": ctx.Get("user")})
+	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "engine": ctx.Get("user")})
 }
 ```
 ---
@@ -180,7 +180,7 @@ type PostBody struct {
 func handler5(ctx ctx.ReqCxtI) {
 	var post PostBody
 	err := ctx.ParseBody(&post)
-	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "ctx": post.Name})
+	ctx.JSON(200, map[string]interface{}{"time": time.Now(), "engine": post.Name})
 }
 ```
 
@@ -204,6 +204,47 @@ func upload(c ctx.ReqCxtI) {
 - gin 3900.
 - other xxx.
 ```
+➜  example git:(master) ✗ ab -n 1000 -c 100  http://localhost:8080/ping
+Server Software:
+Server Hostname:        localhost
+Server Port:            8080
+
+Document Path:          /ping
+Document Length:        18 bytes
+
+Concurrency Level:      100
+Time taken for tests:   0.171 seconds
+Complete requests:      1000
+Failed requests:        0
+Total transferred:      141000 bytes
+HTML transferred:       18000 bytes
+Requests per second:    5840.85 [#/sec] (mean)
+Time per request:       17.121 [ms] (mean)
+Time per request:       0.171 [ms] (mean, across all concurrent requests)
+Transfer rate:          804.26 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    8   3.1      8      14
+Processing:     2    8   2.6      8      15
+Waiting:        0    8   2.6      8      14
+Total:          5   16   4.7     18      24
+
+Percentage of the requests served within a certain time (ms)
+  50%     18
+  66%     19
+  75%     20
+  80%     21
+  90%     22
+  95%     23
+  98%     23
+  99%     23
+ 100%     24 (longest request)
+
+
+
+➜  example git:(master) ✗
+➜  example git:(master) ✗ ab -n 1000 -c 100  http://localhost:9999/ping
 Server Software:
 Server Hostname:        localhost
 Server Port:            9999
@@ -212,32 +253,32 @@ Document Path:          /ping
 Document Length:        6 bytes
 
 Concurrency Level:      100
-Time taken for tests:   0.224 seconds
+Time taken for tests:   0.218 seconds
 Complete requests:      1000
-Failed requests:        5
-   (Connect: 0, Receive: 0, Length: 5, Exceptions: 0)
-Total transferred:      40795 bytes
-HTML transferred:       5970 bytes
-Requests per second:    4468.99 [#/sec] (mean)
-Time per request:       22.376 [ms] (mean)
-Time per request:       0.224 [ms] (mean, across all concurrent requests)
-Transfer rate:          178.04 [Kbytes/sec] received
+Failed requests:        2
+   (Connect: 0, Receive: 0, Length: 2, Exceptions: 0)
+Total transferred:      40918 bytes
+HTML transferred:       5988 bytes
+Requests per second:    4592.99 [#/sec] (mean)
+Time per request:       21.772 [ms] (mean)
+Time per request:       0.218 [ms] (mean, across all concurrent requests)
+Transfer rate:          183.53 [Kbytes/sec] received
 
 Connection Times (ms)
               min  mean[+/-sd] median   max
-Connect:        0   10   3.9     10      20
-Processing:     2   11   3.6     11      35
-Waiting:        0   10   3.6     10      20
-Total:          6   22   6.0     21      49
+Connect:        0   10   3.7     11      18
+Processing:     2   11   2.9     11      28
+Waiting:        0   10   3.0     10      18
+Total:          6   21   5.3     21      39
 
 Percentage of the requests served within a certain time (ms)
   50%     21
   66%     23
-  75%     26
-  80%     27
-  90%     30
-  95%     32
-  98%     33
-  99%     33
- 100%     49 (longest request)
+  75%     24
+  80%     25
+  90%     27
+  95%     28
+  98%     29
+  99%     29
+ 100%     39 (longest request)
 ```

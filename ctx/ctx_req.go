@@ -21,8 +21,6 @@ import (
 
 	"github.com/huaxr/rx/internal"
 	"github.com/huaxr/rx/logger"
-
-	"go.uber.org/atomic"
 )
 
 type ReqCxtI interface {
@@ -61,7 +59,7 @@ const (
 	EPoll
 )
 
-// RequestContext contains all the ctx when a req has triggered
+// RequestContext contains all the engine when a req has triggered
 type RequestContext struct {
 	*responseContext
 	// abort preStatus will not execute or generate the response handler
@@ -82,7 +80,7 @@ type RequestContext struct {
 
 	// abort will set the it true
 	// finished flag represent that the request has done.
-	finished *atomic.Bool
+	finished bool
 }
 
 var reqCtxPool = sync.Pool{
@@ -112,7 +110,7 @@ func (r *RequestContext) setAbort(status int16, message interface{}) {
 		r.responseContext.rspHeaders["Content-Type"] = internal.MIMEJSON
 	}
 	r.abortContext = r.NewAbort(status, message)
-	r.finished.Store(true)
+	r.finished = true
 }
 
 func (r *RequestContext) isAbort() bool {
@@ -128,33 +126,24 @@ func (r *RequestContext) free() *RequestContext {
 	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
-	r.finished.Store(false)
+	r.finished = false
 	//r.StrategyContext = openDefaultStrategy()
 	return r
 }
 
 func (r *RequestContext) init() {
 	r.time = time.Now()
-	r.finished = atomic.NewBool(false)
+	r.finished = false
 	r.flashStore = new(sync.Map)
 }
 
-func wrapStd(conn net.Conn) {
+func WrapStd(conn net.Conn) {
 	var buffer bytes.Buffer
 	defer buffer.Reset()
-	var flag = false
-	var buf = make([]byte, internal.PieceSize)
-	for {
-		// SetReadDeadline will block read until the deadline
-		// for the best efficiency, if the first buf content-length
-		// small enough, just break the read option then.
-		err := conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-		if err != nil {
-			logger.Log.Error(err.Error())
-			_ = conn.Close()
-			return
-		}
 
+	var buf = make([]byte, internal.PieceSize)
+	var flag = false
+	for {
 		n, err := conn.Read(buf[:])
 		if err != nil {
 			// timeout err just break
@@ -180,6 +169,16 @@ func wrapStd(conn net.Conn) {
 			}
 			flag = true
 		}
+
+		// SetReadDeadline will block read until the deadline
+		// for the best efficiency, if the first buf content-length
+		// small enough, just break the read option then.
+		err = conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+		if err != nil {
+			logger.Log.Error(err.Error())
+			_ = conn.Close()
+			return
+		}
 	}
 	buf = buf[:0]
 
@@ -202,10 +201,9 @@ func wrapStd(conn net.Conn) {
 		reqCtx.setRequest(r)
 	}
 	reqCtx.execute()
-	//putContext(reqCtx)
 }
 
-func wrapEPoll(buf []byte) []byte {
+func WapEPoll(buf []byte) []byte {
 	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.init()
 	reqCtx.setMod(EPoll)
@@ -247,7 +245,7 @@ func (rc *RequestContext) GetPath() string {
 
 func (rc *RequestContext) finish() {
 	rc.SetStopTime(time.Now())
-	rc.finished.Store(true)
+	rc.finished = true
 	logger.ReqLog(&internal.RequestLogger{
 		StartTime: rc.time,
 		StopTime:  rc.responseContext.time,
@@ -355,7 +353,7 @@ func (rc *RequestContext) asyncExecute(async chan bool) {
 		h := rc.stack.Pop()
 		h(rc)
 
-		if rc.isAbort() || rc.finished.Load() {
+		if rc.isAbort() || rc.finished {
 			// if asyncSignal equals nil, this goroutine
 			// will perpetual block eternal die, which will
 			// cause memory leak, using runtime.NumGoroutine
@@ -374,7 +372,7 @@ func (rc *RequestContext) asyncExecute(async chan bool) {
 	}
 }
 
-// the core handler invoke and trigger some events in each handler.
+// the ctx handler invoke and trigger some events in each handler.
 // execute each HandlerFunc on stack which is a dynamically
 // choice for your logic flow. stack HandlerFunc can using
 // the dynamic push option to return a HandlerFunc to the
@@ -388,14 +386,14 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			return
 		}
 		rc.checkAbort()
-		rc.finish()
 		response = rc.responseContext
 		rc.connSend()
+		rc.finish()
 	}()
 	// initStack will set the *stack and abort status.
 	rc.initStack()
 	// not abort, not finished check with the available stack.
-	for !rc.isAbort() && !rc.finished.Load() && rc.stack.length.Load() > 0 {
+	for !rc.isAbort() && !rc.finished && rc.stack.length.Load() > 0 {
 		// not using strategy.
 		if rc.StrategyContext == nil {
 			rc.stack.Pop()(rc)

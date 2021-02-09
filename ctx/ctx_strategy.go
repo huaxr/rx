@@ -49,14 +49,13 @@ type StrategyContext struct {
 	// functions can be made && check here.
 	Security ControlStrategy
 
-
 	signal
 }
 
 // openDefaultStrategy open the default strategy here.
 // init the strategyContext fields in order to avoiding the nil pointer.
 // consider of the performance, return the reqCtx field strategyContext.
-// you can use c.RegisterStrategy(&ctx.StrategyContext{Timeout: 1 * time.Second, Ttl: 4})
+// you can use c.RegisterStrategy(&engine.StrategyContext{Timeout: 1 * time.Second, Ttl: 4})
 // to start a StrategyContext on your own.
 
 // default Timeout never expire.
