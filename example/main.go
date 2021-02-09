@@ -44,6 +44,7 @@ type PostBody struct {
 func last(c ctx.ReqCxtI) {
 	x := c.GetQuery("a", "xx")
 	log.Println(x)
+	time.Sleep(3 * time.Second)
 	//var post PostBody
 	//err := c.ParseBody(&post)
 	c.JSON(200, map[string]interface{}{"time": time.Now()})
