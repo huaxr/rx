@@ -21,44 +21,42 @@ type RspCtxI interface {
 }
 
 type responseContext struct {
-	body   bytes.Buffer
-	status int16
+	body bytes.Buffer
 
 	rspHeaders map[string]interface{}
 	rspBody    []byte
-	time       time.Time
+	status     int16
+
+	time time.Time
 }
 
 func (r *responseContext) getRspStatus() int16 {
 	return r.status
 }
 
-func (res *responseContext) wrapResponse() {
-	res.wrapResponseHeader()
-	if len(res.rspBody) > 0 {
-		res.body.Write([]byte(fmt.Sprintf("Content-Length: %d", len(string(res.rspBody))) + "\r\n"))
-		res.wrapResponseBody()
-	}
-	res.rspBody = []byte{}
-}
-
-func (res *responseContext) wrapResponseHeader() {
-	firstLine := fmt.Sprintf("HTTP/1.1 %d\r\n", res.status)
-	res.body.Write([]byte(firstLine))
-	for k, v := range res.rspHeaders {
-		res.body.Write([]byte(k + ": " + v.(string) + "\r\n"))
-	}
-}
-
-func (res *responseContext) wrapResponseBody() {
-	res.body.Write([]byte("\r\n"))
-	res.body.Write(res.rspBody)
-}
-
-func (res *responseContext) rspToBytes() []byte {
-	defer res.body.Reset()
-	res.wrapResponse()
+func (res *responseContext) wrapResponse() []byte {
+	defer func() {
+		res.rspBody = []byte{}
+		res.body.Reset()
+	}()
+	res.wrap()
 	return res.body.Bytes()
+}
+
+func (res *responseContext) wrap() {
+	firstLine := fmt.Sprintf("HTTP/1.1 %d\r\n", res.status)
+	res.body.Write(internal.StringToBytes(firstLine))
+	for k, v := range res.rspHeaders {
+		res.body.Write(internal.StringToBytes(k + ": " + v.(string) + "\r\n"))
+	}
+
+	res.body.Write(internal.StringToBytes("Server: RX\r\n"))
+
+	if len(res.rspBody) > 0 {
+		res.body.Write(internal.StringToBytes(fmt.Sprintf("Content-Length: %d", len(res.rspBody)) + "\r\n"))
+		res.body.Write(internal.StringToBytes("\r\n"))
+		res.body.Write(res.rspBody)
+	}
 }
 
 func (rsp *responseContext) JSON(status int16, response interface{}) {

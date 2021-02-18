@@ -14,11 +14,16 @@ import (
 )
 
 func RegisterLogRequest(writer ...io.Writer) {
-	reqWriter =  io.MultiWriter(writer...)
+	reqWriter = io.MultiWriter(writer...)
 }
 
 // normal request log
 var reqWriter io.Writer = os.Stdout
+var enable bool = true
+
+func DisableLog() {
+	enable = false
+}
 
 type requestFormatter struct {
 	// TimeStamp shows log current time
@@ -48,6 +53,9 @@ var defaultLogFormatter = func(param requestFormatter) string {
 }
 
 func ReqLog(req *internal.RequestLogger) {
+	if !enable {
+		return
+	}
 	if reqWriter == nil {
 		reqWriter = os.Stdout
 	}

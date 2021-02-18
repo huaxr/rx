@@ -199,86 +199,44 @@ func upload(c ctx.ReqCxtI) {
 ---
 
 ### Benchmark
-- 压测比较
-- rx 4300.
-- gin 3900.
-- other xxx.
+提升负载策略，真实并发量突破3200
+ab -n 1000 -c 10  http://localhost:9999/ping
 ```
-➜  example git:(master) ✗ ab -n 1000 -c 100  http://localhost:8080/ping
-Server Software:
-Server Hostname:        localhost
-Server Port:            8080
+Server Software:        RX
+Server Hostname:        127.0.0.1
+Server Port:            9999
 
 Document Path:          /ping
 Document Length:        18 bytes
 
-Concurrency Level:      100
-Time taken for tests:   0.171 seconds
+Concurrency Level:      10
+Time taken for tests:   0.161 seconds
 Complete requests:      1000
 Failed requests:        0
-Total transferred:      141000 bytes
+Total transferred:      98000 bytes
 HTML transferred:       18000 bytes
-Requests per second:    5840.85 [#/sec] (mean)
-Time per request:       17.121 [ms] (mean)
-Time per request:       0.171 [ms] (mean, across all concurrent requests)
-Transfer rate:          804.26 [Kbytes/sec] received
+Requests per second:    6217.90 [#/sec] (mean)
+Time per request:       1.608 [ms] (mean)
+Time per request:       0.161 [ms] (mean, across all concurrent requests)
+Transfer rate:          595.07 [Kbytes/sec] received
 
 Connection Times (ms)
               min  mean[+/-sd] median   max
-Connect:        0    8   3.1      8      14
-Processing:     2    8   2.6      8      15
-Waiting:        0    8   2.6      8      14
-Total:          5   16   4.7     18      24
+Connect:        0    1   0.2      1       1
+Processing:     0    1   0.2      1       2
+Waiting:        0    1   0.2      1       2
+Total:          0    1   0.4      2       2
+ERROR: The median and mean for the total time are more than twice the standard
+       deviation apart. These results are NOT reliable.
 
 Percentage of the requests served within a certain time (ms)
-  50%     18
-  66%     19
-  75%     20
-  80%     21
-  90%     22
-  95%     23
-  98%     23
-  99%     23
- 100%     24 (longest request)
-
-
-
-➜  example git:(master) ✗
-➜  example git:(master) ✗ ab -n 1000 -c 100  http://localhost:9999/ping
-Server Software:
-Server Hostname:        localhost
-Server Port:            9999
-
-Document Path:          /ping
-Document Length:        6 bytes
-
-Concurrency Level:      100
-Time taken for tests:   0.218 seconds
-Complete requests:      1000
-Failed requests:        2
-   (Connect: 0, Receive: 0, Length: 2, Exceptions: 0)
-Total transferred:      40918 bytes
-HTML transferred:       5988 bytes
-Requests per second:    4592.99 [#/sec] (mean)
-Time per request:       21.772 [ms] (mean)
-Time per request:       0.218 [ms] (mean, across all concurrent requests)
-Transfer rate:          183.53 [Kbytes/sec] received
-
-Connection Times (ms)
-              min  mean[+/-sd] median   max
-Connect:        0   10   3.7     11      18
-Processing:     2   11   2.9     11      28
-Waiting:        0   10   3.0     10      18
-Total:          6   21   5.3     21      39
-
-Percentage of the requests served within a certain time (ms)
-  50%     21
-  66%     23
-  75%     24
-  80%     25
-  90%     27
-  95%     28
-  98%     29
-  99%     29
- 100%     39 (longest request)
+  50%      2
+  66%      2
+  75%      2
+  80%      2
+  90%      2
+  95%      2
+  98%      2
+  99%      2
+ 100%      2 (longest request)
 ```

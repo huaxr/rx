@@ -8,17 +8,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/huaxr/rx/logger"
+
 	"github.com/huaxr/rx/internal"
 )
 
 //type IsAsync bool
-//
 //
 //type handlerCore struct {
 //	async IsAsync
 //	handlerFunc func(engine ReqCxtI)
 //	handlerAsyncFunc func(engine ReqCxtI) (done chan bool)
 //}
+
+func DisableLog() {
+	logger.DisableLog()
+}
 
 type handlerFunc func(ctx ReqCxtI)
 

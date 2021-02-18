@@ -3,12 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/huaxr/rx/ctx"
-
-	"github.com/huaxr/rx/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/huaxr/rx/engine"
@@ -19,22 +16,23 @@ import (
 func handler1(c ctx.ReqCxtI) {
 	//c.SetDefaultTimeOut(1 * time.Second)
 	//c.SetDefaultTTL(4)
-	logger.Log.Info("execute handler1", runtime.NumGoroutine())
-	//c.RegisterStrategy(
-	//	&ctx.StrategyContext{Ttl: 4,
-	//		Async: false,
-	//		//Timeout: 1*time.Second,
-	//	})
+	//logger.Log.Info("execute handler1", runtime.NumGoroutine())
+	c.RegisterStrategy(
+		&ctx.StrategyContext{
+			Ttl:   4,
+			Async: false,
+			//Timeout: 1*time.Second,
+		})
 }
 
 func handler2(c ctx.ReqCxtI) {
 	// 使用异步来标识异步处理逻辑
 	//time.Sleep(2 * time.Second)
-	logger.Log.Info("execute handler2")
+	//logger.Log.Info("execute handler2")
 }
 
 func handler3(c ctx.ReqCxtI) {
-	logger.Log.Info("execute handler3")
+	//logger.Log.Info("execute handler3")
 }
 
 type PostBody struct {
@@ -42,27 +40,27 @@ type PostBody struct {
 }
 
 func last(c ctx.ReqCxtI) {
-	x := c.GetQuery("a", "xx")
-	log.Println(x)
-	time.Sleep(3 * time.Second)
+
+	//time.Sleep(3 * time.Second)
 	//var post PostBody
 	//err := c.ParseBody(&post)
 	c.JSON(200, map[string]interface{}{"time": time.Now()})
-	logger.Log.Info("execute last")
+	//logger.Log.Info("execute last")
 	//engine.Next(handler3)
 	//engine.Abort(200, "sorry")
 }
 
 func handler4(c ctx.ReqCxtI) {
-	logger.Log.Info("execute handler4")
+	//logger.Log.Info("execute handler4")
 }
 
 func handler5(c ctx.ReqCxtI) {
-	logger.Log.Info("execute handler5")
+	//logger.Log.Info("execute handler5")
 	c.JSON(200, "XXX")
 }
 
 func upload(c ctx.ReqCxtI) {
+	log.Println("zzzzzzzzzzzzzzzzzzz")
 	c.SaveLocalFile("/Users/hua/go/src/github.com/huaxr/rx/example/upload")
 	c.JSON(200, "xxx")
 }
@@ -73,17 +71,14 @@ func ping(c ctx.ReqCxtI) {
 
 // std epoll
 func main() {
-
-	go func() {
-		http.ListenAndServe("localhost:8888", nil)
-	}()
-
 	server := engine.NewServer("std", "127.0.0.1:9999")
 	defer server.Run()
 
 	ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {
 		ctx.Abort(404, "not exist")
 	})
+
+	ctx.DisableLog()
 
 	group := ctx.Group("/v1", handler1)
 	group.Register("get", "ddd", handler2)
@@ -101,17 +96,20 @@ func main() {
 }
 
 func main2() {
+	go func() {
+		http.ListenAndServe("localhost:8888", nil)
+	}()
+
 	r := gin.Default()
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",
 		})
 	})
-	r.Run() // listen and serve on 0.0.0.0:8080
+	r.Run(":9999") // listen and serve on 0.0.0.0:8080
 }
 
 func x(c *gin.Context) {
 	c.File("/")
 	//c.FormFile()
-
 }

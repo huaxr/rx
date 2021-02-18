@@ -3,7 +3,9 @@
 #ab -n 1000 -c 100  http://localhost:9999/v1/v2/v3/eee
 
 
-#wrk -c 400 -t 8 -d 3m http://localhost:9999/test
+wrk -c 400 -t 8 -d 3m http://localhost:9999/v1/v2/v3/eee
 
 #brew install graphviz
 go tool pprof ./output/bin/test ./profile
+go tool pprof http://localhost:9998/debug/pprof/heap
+go tool pprof http://localhost:9998/debug/pprof/profile?seconds=60

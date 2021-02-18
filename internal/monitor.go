@@ -13,7 +13,7 @@ import (
 
 func init() {
 	go func() {
-		_ = http.ListenAndServe(":9998", nil)
+		_ = http.ListenAndServe("127.0.0.1:9998", nil)
 	}()
 }
 

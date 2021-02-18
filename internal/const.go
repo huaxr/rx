@@ -5,7 +5,8 @@
 package internal
 
 const (
-	PieceSize = 1000 * 10 // 100K
+	PieceSize   = 32 // byte
+	ReadTimeOut = 985
 )
 
 const (

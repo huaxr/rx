@@ -1,0 +1,17 @@
+(pprof) top15
+Showing nodes accounting for 1601kB, 100% of 1601kB total
+      flat  flat%   sum%        cum   cum%
+ 1056.33kB 65.98% 65.98%  1056.33kB 65.98%  regexp.(*bitState).reset
+  544.67kB 34.02%   100%   544.67kB 34.02%  github.com/huaxr/rx/engine.NewStdServer.func1
+         0     0%   100%  1056.33kB 65.98%  github.com/huaxr/rx/ctx.WrapStd
+         0     0%   100%  1056.33kB 65.98%  github.com/huaxr/rx/engine.(*stdServer).do.func1
+         0     0%   100%   544.67kB 34.02%  github.com/huaxr/rx/engine.NewServer
+         0     0%   100%   544.67kB 34.02%  github.com/huaxr/rx/engine.NewStdServer
+         0     0%   100%   544.67kB 34.02%  main.main
+         0     0%   100%  1056.33kB 65.98%  regexp.(*Regexp).FindAllStringSubmatch
+         0     0%   100%  1056.33kB 65.98%  regexp.(*Regexp).allMatches
+         0     0%   100%  1056.33kB 65.98%  regexp.(*Regexp).backtrack
+         0     0%   100%  1056.33kB 65.98%  regexp.(*Regexp).doExecute
+         0     0%   100%   544.67kB 34.02%  runtime.main
+         0     0%   100%   544.67kB 34.02%  sync.(*Once).Do (inline)
+         0     0%   100%   544.67kB 34.02%  sync.(*Once).doSlow

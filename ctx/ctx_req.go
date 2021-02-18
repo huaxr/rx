@@ -9,12 +9,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net"
 	"net/http"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +51,7 @@ type ReqCxtI interface {
 
 type mod int
 
-var reg = regexp.MustCompile(`Content-Length: (.*?)\r\n`)
+//var reg = regexp.MustCompile(`Content-Length: (.*?)\r\n`)
 
 const (
 	Std mod = iota
@@ -120,14 +119,12 @@ func (r *RequestContext) isAbort() bool {
 // Free when get ReqCxtI from sync.pool, clear the allocated map fields.
 func (r *RequestContext) free() *RequestContext {
 	r.abortContext = nil
-	//r.responseContext = nil
-	//r.StrategyContext = nil
+	r.StrategyContext = nil
 	// if the openStrategy did not set false, it will trigger nil pointer
 	// at next Get from the sync.Pool, because the flag not clear automatically when put to sync.Pool.
 	r.rspHeaders = map[string]interface{}{}
 	r.flashStore = &sync.Map{}
 	r.finished = false
-	//r.StrategyContext = openDefaultStrategy()
 	return r
 }
 
@@ -139,53 +136,38 @@ func (r *RequestContext) init() {
 
 func WrapStd(conn net.Conn) {
 	var buffer bytes.Buffer
-	defer buffer.Reset()
-
 	var buf = make([]byte, internal.PieceSize)
-	var flag = false
+
+	//var flag uint8
 	for {
+		// read is an blocking method
 		n, err := conn.Read(buf[:])
-		if err != nil {
+		if n == 0 || err != nil {
 			// timeout err just break
 			break
 		}
-		buffer.Write(buf[:n])
+		wn, err := buffer.Write(buf[:n])
 
-		if !flag {
-			match := reg.FindAllStringSubmatch(buffer.String(), 1)
-			// no content-length means the body is small enough
-			// to consider read. Or get-method request, just
-			// break it.
-			if match == nil {
-				break
-			}
-			length, err := strconv.Atoi(match[0][1])
-			if err != nil {
-				logger.Log.Error(err.Error())
-				break
-			}
-			if length < internal.PieceSize {
-				break
-			}
-			flag = true
+		if wn != n || err != nil {
+			logger.Log.Error("write err %v", err.Error())
+			break
+		}
+		if n < internal.PieceSize {
+			break
 		}
 
 		// SetReadDeadline will block read until the deadline
 		// for the best efficiency, if the first buf content-length
 		// small enough, just break the read option then.
-		err = conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
-		if err != nil {
-			logger.Log.Error(err.Error())
-			_ = conn.Close()
-			return
-		}
+		// double of internal.PieceSize can maximize the timeout handler.
+		// treble for justify the balance
+		_ = conn.SetReadDeadline(time.Now().Add(3 * internal.PieceSize * time.Microsecond))
 	}
-	buf = buf[:0]
-
 	if buffer.Len() == 0 {
 		_ = conn.Close()
 		return
 	}
+	buf = buf[:0]
 
 	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.init()
@@ -201,6 +183,7 @@ func WrapStd(conn net.Conn) {
 		reqCtx.setRequest(r)
 	}
 	reqCtx.execute()
+	buffer.Reset()
 }
 
 func WapEPoll(buf []byte) []byte {
@@ -303,7 +286,7 @@ func (rc *RequestContext) GetFile() multipart.File {
 func (rc *RequestContext) SaveLocalFile(dst string) {
 	file, header, err := rc.request.FormFile("file")
 	if err != nil {
-		logger.Log.Error(err.Error())
+		log.Println(err, rc.conn)
 		return
 	}
 	path := dst + "/" + header.Filename
@@ -330,15 +313,12 @@ func (rc *RequestContext) connSend() {
 	if !rc.isStd() {
 		return
 	}
-	_, err := rc.conn.Write(rc.responseContext.rspToBytes())
-	if err != nil {
-		logger.Log.Error(err.Error())
-		_ = rc.conn.Close()
-	}
-	_ = rc.conn.Close()
+	response := rc.responseContext.wrapResponse()
+	rc.conn.Write(response)
+	rc.conn.Close()
 }
 
-func (rc *RequestContext) asyncExecute(async chan bool) {
+func (rc *RequestContext) asyncExecute(async chan struct{}) {
 	defer func() {
 		rc.checkAbort()
 		rc.finish()
@@ -358,13 +338,13 @@ func (rc *RequestContext) asyncExecute(async chan bool) {
 			// will perpetual block eternal die, which will
 			// cause memory leak, using runtime.NumGoroutine
 			// to debug this.
-			async <- true
+			async <- struct{}{}
 			return
 		}
 		// handle ttl here
 		if rc.Ttl == 0 {
 			rc.handleTTL(rc)
-			async <- true
+			async <- struct{}{}
 			return
 		}
 		// stack execute once. ttl -= 1
@@ -415,7 +395,7 @@ func (rc *RequestContext) execute() (response *responseContext) {
 
 			// using timeout. using async, ttl...
 			if rc.timeout {
-				done := make(chan bool, 1)
+				done := make(chan struct{}, 1)
 				// done channel with buffer, attention here.
 				// if no buffer here, some goroutines will
 				// deadly block in the end.
@@ -429,7 +409,7 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			}
 
 			if rc.Async {
-				done := make(chan bool, 1)
+				done := make(chan struct{}, 1)
 				// chan with buffer, otherwise block.
 				// todo: using goroutine pool to manager the counts.
 				go rc.asyncExecute(done)
