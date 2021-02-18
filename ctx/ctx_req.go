@@ -163,25 +163,26 @@ func WrapStd(conn net.Conn) {
 		// treble for justify the balance
 		_ = conn.SetReadDeadline(time.Now().Add(3 * internal.PieceSize * time.Microsecond))
 	}
+	buf = buf[:0]
+
+	reqCtx := reqCtxPool.Get().(*RequestContext)
+
 	if buffer.Len() == 0 {
 		_ = conn.Close()
 		return
 	}
-	buf = buf[:0]
-
-	reqCtx := reqCtxPool.Get().(*RequestContext)
-	reqCtx.init()
-
-	reqCtx.setMod(Std)
-	reqCtx.setRawSock(conn)
-
 	r, err := http.ReadRequest(bufio.NewReader(&buffer))
 	if err != nil {
-		logger.Log.Error("err: %v, buffer size: %d", err.Error(), buffer.Len())
-		reqCtx.setAbort(403, "Bad Request")
+		//logger.Log.Error("err: %v, buffer size: %d", err.Error(), buffer.Len())
+		//reqCtx.setAbort(403, "Bad Request")
+		_ = conn.Close()
+		return
 	} else {
 		reqCtx.setRequest(r)
 	}
+	reqCtx.init()
+	reqCtx.setMod(Std)
+	reqCtx.setRawSock(conn)
 	reqCtx.execute()
 	buffer.Reset()
 }
