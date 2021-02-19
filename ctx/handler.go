@@ -35,7 +35,15 @@ type router struct {
 
 var handlerSlice = make(map[int]*router)
 
+const banner = `
+ ____   ___ ____  _ /\/|___  __  __
+|___ \ / _ \___ \/ |/\/  _ \ \ \/ /
+  __) | | | |__) | |  | |_) | \ |/
+ / __/| |_| / __/| |  | |_|<  / |\
+|_____|\___/_____|_|  |_| \_\/_/\_\`
+
 func Print() {
+	fmt.Println(banner)
 	for _, v := range handlerSlice {
 		fmt.Printf("\x1b[%dm"+fmt.Sprintf("|EGISTER ROUTER:| %6s |%20s |%d|", v.method, v.url, len(v.handler))+" \x1b[0m\n", 36)
 	}
