@@ -138,7 +138,6 @@ func WrapStd(conn net.Conn) {
 	var buffer bytes.Buffer
 	var buf = make([]byte, internal.PieceSize)
 
-	//var flag uint8
 	for {
 		// read is an blocking method
 		n, err := conn.Read(buf[:])
@@ -167,7 +166,6 @@ func WrapStd(conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	buf = buf[:0]
 
 	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.init()
@@ -184,6 +182,7 @@ func WrapStd(conn net.Conn) {
 	}
 	reqCtx.execute()
 	buffer.Reset()
+	buf = buf[:0]
 }
 
 func WapEPoll(buf []byte) []byte {
