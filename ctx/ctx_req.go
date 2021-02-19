@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/huaxr/rx/engine/keepalive"
+
 	"github.com/huaxr/rx/internal"
 	"github.com/huaxr/rx/logger"
 )
@@ -134,7 +136,7 @@ func (r *RequestContext) init() {
 	r.flashStore = new(sync.Map)
 }
 
-func WrapStd(conn net.Conn) {
+func read(conn net.Conn) *bytes.Buffer {
 	var buffer bytes.Buffer
 	var buf = make([]byte, internal.PieceSize)
 
@@ -154,7 +156,6 @@ func WrapStd(conn net.Conn) {
 		if n < internal.PieceSize {
 			break
 		}
-
 		// SetReadDeadline will block read until the deadline
 		// for the best efficiency, if the first buf content-length
 		// small enough, just break the read option then.
@@ -163,28 +164,32 @@ func WrapStd(conn net.Conn) {
 		_ = conn.SetReadDeadline(time.Now().Add(3 * internal.PieceSize * time.Microsecond))
 	}
 	buf = buf[:0]
+	return &buffer
+}
 
-	reqCtx := reqCtxPool.Get().(*RequestContext)
-
+func WrapStd(conn net.Conn) {
+	buffer := read(conn)
 	if buffer.Len() == 0 {
-		_ = conn.Close()
 		return
 	}
-	r, err := http.ReadRequest(bufio.NewReader(&buffer))
-	if err != nil {
-		//logger.Log.Error("err: %v, buffer size: %d", err.Error(), buffer.Len())
-		//reqCtx.setAbort(403, "Bad Request")
-		_ = conn.Close()
-		return
-	} else {
-		reqCtx.setRequest(r)
-	}
+	reqCtx := reqCtxPool.Get().(*RequestContext)
+	defer func() {
+		// return back the context poll
+		putContext(reqCtx)
+		buffer.Reset()
+	}()
+
 	reqCtx.init()
 	reqCtx.setMod(Std)
 	reqCtx.setRawSock(conn)
+
+	r, err := http.ReadRequest(bufio.NewReader(buffer))
+	reqCtx.setRequest(r)
+
+	if err != nil {
+		reqCtx.setAbort(400, "only allowed http.")
+	}
 	reqCtx.execute()
-	buffer.Reset()
-	buf = buf[:0]
 }
 
 func WapEPoll(buf []byte) []byte {
@@ -203,6 +208,29 @@ func WapEPoll(buf []byte) []byte {
 
 func (rc *RequestContext) setMod(m mod) {
 	rc.mod = m
+}
+
+// keepalive set the net.conn to the tcpConn
+func (rc *RequestContext) keepalive(c net.Conn) *keepalive.Conn {
+	conn, err := keepalive.EnableKeepAlive(c)
+	if err != nil {
+		logger.Log.Error("EnableKeepAlive error: %v", err)
+	}
+	err = conn.SetKeepAliveIdle(10 * time.Second)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveIdle failed: %v", err)
+	}
+
+	err = conn.SetKeepAliveCount(9)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveCount failed: %v", err)
+	}
+
+	err = conn.SetKeepAliveInterval(10 * time.Second)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveInterval failed: %v", err)
+	}
+	return conn
 }
 
 func (rc *RequestContext) setRawSock(c net.Conn) {
@@ -238,8 +266,7 @@ func (rc *RequestContext) finish() {
 		Path:      rc.GetPath(),
 		Status:    rc.status,
 	})
-	// return back the context poll
-	putContext(rc)
+	_ = rc.conn.Close()
 }
 
 func (rc *RequestContext) checkAbort() bool {
@@ -316,7 +343,7 @@ func (rc *RequestContext) connSend() {
 	}
 	response := rc.responseContext.wrapResponse()
 	rc.conn.Write(response)
-	rc.conn.Close()
+	//rc.conn.Close()
 }
 
 func (rc *RequestContext) asyncExecute(async chan struct{}) {
@@ -382,7 +409,6 @@ func (rc *RequestContext) execute() (response *responseContext) {
 			//if rc.Demotion != nil {
 			//	rc.Demotion.Do()
 			//}
-
 			// stop and set abort whether score a hit of the Fusing.Do() method.
 			if rc.Fusing != nil && rc.Fusing.Do() {
 				rc.setAbort(403, "fusing deny")

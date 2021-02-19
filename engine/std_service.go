@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/huaxr/rx/ctx"
 
 	"github.com/huaxr/rx/logger"
@@ -26,10 +24,10 @@ type stdServer struct {
 
 	ch []chan net.Conn
 
-	tick  *time.Ticker
-	count atomic.Int32
+	tick *time.Ticker
 
-	qps int32
+	count int32
+	qps   int32
 	// runtime.NumGoroutine()
 	//num int32
 
@@ -54,13 +52,11 @@ func NewStdServer(addr string) *stdServer {
 		}
 		t.listener = listen
 
-		ch := make(chan net.Conn, 200)
+		ch := make(chan net.Conn, 1000)
 		for i := 1; i <= LB; i++ {
 			t.ch = append(t.ch, ch)
 		}
 		t.tick = time.NewTicker(period * time.Second)
-		//t.stop = make(chan struct{}, 50)
-		//t.add = make(chan struct{}, 50)
 		go t.calculateQPS()
 		t.do()
 	})
@@ -72,22 +68,11 @@ func (t *stdServer) calculateQPS() {
 		select {
 		case <-t.tick.C:
 			//last_qps := t.qps
-			t.qps = t.count.Load() / period
-			//delta := current_qps - last_qps
-			//if delta > 0 {
-			//	for i := delta; i > 0; i-- {
-			//		t.add <- struct{}{}
-			//	}
-			//} else {
-			//	delta = -delta
-			//	for i := delta; i > 0; i-- {
-			//		t.stop <- struct{}{}
-			//	}
-			//}
+			t.qps = t.count / period
 			if t.qps > 0 {
 				logger.Log.Info("current qps: %d/s, goroutine count: %d", t.qps, runtime.NumGoroutine())
 			}
-			t.count.Store(0)
+			t.count = 0
 		}
 	}
 }
@@ -119,7 +104,7 @@ func (t *stdServer) do() {
 			for {
 				c := <-channel
 				ctx.WrapStd(c)
-				t.count.Inc()
+				t.count++
 			}
 		}()
 	}
