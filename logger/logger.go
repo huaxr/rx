@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type Logger interface {
@@ -65,8 +66,9 @@ func debugLine() {
 }
 
 func (l *log) do(level string, format string, val ...interface{}) {
-	res := fmt.Sprintf("[RX %s]:%s \n", level, fmt.Sprintf(format, val...))
-	fmt.Fprint(reqWriter, fmt.Sprintf("\x1b[%dm%s\x1b[0m", colorSet[level], res))
+	res := fmt.Sprintf("[\u001B[34m%s\u001B[0m] [\u001B[%dm%s\u001B[0m] %s\n",
+		time.Now().Format("01/02 15:04:05"), colorSet[level], level, fmt.Sprintf(format, val...))
+	_, _ = fmt.Fprint(reqWriter, res)
 }
 
 func (l *log) Recovery(format string, val ...interface{}) {

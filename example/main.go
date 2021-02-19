@@ -2,13 +2,13 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"time"
+
+	"github.com/huaxr/rx/logger"
 
 	"github.com/huaxr/rx/ctx"
 
-	"github.com/gin-gonic/gin"
-	"github.com/huaxr/rx/engine"
+	"github.com/huaxr/rx/ctx/engine"
 
 	_ "net/http/pprof"
 )
@@ -71,7 +71,15 @@ func ping(c ctx.ReqCxtI) {
 
 // std epoll
 func main() {
+
+	logger.Log.Critical("xxxxxx")
+
+	logger.Log.Error("xxxxxx")
+	logger.Log.Warning("xxxxxx")
+
 	server := engine.NewServer("std", "127.0.0.1:9999")
+	server.Type("http")
+	//server.Type("tcp")
 	defer server.Run()
 
 	ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {
@@ -93,23 +101,4 @@ func main() {
 	ctx.Register("post", "/upload", upload)
 
 	ctx.Register("get", "/ping", ping)
-}
-
-func main2() {
-	go func() {
-		http.ListenAndServe("localhost:8888", nil)
-	}()
-
-	r := gin.Default()
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
-	r.Run(":9999") // listen and serve on 0.0.0.0:8080
-}
-
-func x(c *gin.Context) {
-	c.File("/")
-	//c.FormFile()
 }

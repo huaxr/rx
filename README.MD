@@ -10,6 +10,7 @@ RX is a dynamic configurable and assemble web framework based on Go.
 - [Customized Response](#Customized-Response)
 - [Asynchronous Router](#Asynchronous-Router)
 - [Customized Abort](#Customized-abort)
+- [TCP Server](#TCP-Serger)
 - [Context Transfer](#Context-Transfer)
 - [Epoll Kqueue](#Epoll-Kqueue)
 - [URL Parse](#URL-Parse)
@@ -134,6 +135,16 @@ ctx.SetDefaultHandler(404, func(ctx ctx.ReqCxtI) {
     ctx.Abort(200, "Not Allowed")
 })
 ```
+---
+
+## TCP Server
+- 支持TCP长连接 web
+```go
+server := engine.NewServer("std", "127.0.0.1:9999")
+server.Type("tcp")
+defer server.Run()
+```
+
 ---
 
 ## Context Transfer

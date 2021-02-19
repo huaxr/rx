@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/huaxr/rx/engine/keepalive"
+	"github.com/huaxr/rx/ctx/engine/alive"
 
 	"github.com/huaxr/rx/internal"
 	"github.com/huaxr/rx/logger"
@@ -82,6 +82,10 @@ type RequestContext struct {
 	// abort will set the it true
 	// finished flag represent that the request has done.
 	finished bool
+
+	// whether this connection is alive
+	// conn will not close when keepalive set.
+	keepalive bool
 }
 
 var reqCtxPool = sync.Pool{
@@ -136,13 +140,19 @@ func (r *RequestContext) init() {
 	r.flashStore = new(sync.Map)
 }
 
-func read(conn net.Conn) *bytes.Buffer {
+// http read need readTimeout to check whether the connection
+// data is already received.
+func read(conn net.Conn, readTimeout bool) *bytes.Buffer {
 	var buffer bytes.Buffer
 	var buf = make([]byte, internal.PieceSize)
 
 	for {
 		// read is an blocking method
 		n, err := conn.Read(buf[:])
+		if err == io.EOF {
+			_ = conn.Close()
+			return nil
+		}
 		if n == 0 || err != nil {
 			// timeout err just break
 			break
@@ -156,19 +166,24 @@ func read(conn net.Conn) *bytes.Buffer {
 		if n < internal.PieceSize {
 			break
 		}
-		// SetReadDeadline will block read until the deadline
-		// for the best efficiency, if the first buf content-length
-		// small enough, just break the read option then.
-		// double of internal.PieceSize can maximize the timeout handler.
-		// treble for justify the balance
-		_ = conn.SetReadDeadline(time.Now().Add(3 * internal.PieceSize * time.Microsecond))
+		if readTimeout {
+			// SetReadDeadline will block read until the deadline
+			// for the best efficiency, if the first buf content-length
+			// small enough, just break the read option then.
+			// double of internal.PieceSize can maximize the timeout handler.
+			// treble for justify the balance
+			_ = conn.SetReadDeadline(time.Now().Add(3 * internal.PieceSize * time.Microsecond))
+		}
 	}
 	buf = buf[:0]
 	return &buffer
 }
 
-func WrapStd(conn net.Conn) {
-	buffer := read(conn)
+func executeHttp(conn net.Conn) {
+	buffer := read(conn, true)
+	if buffer == nil {
+		return
+	}
 	if buffer.Len() == 0 {
 		return
 	}
@@ -192,6 +207,28 @@ func WrapStd(conn net.Conn) {
 	reqCtx.execute()
 }
 
+func executeTcp(conn net.Conn) {
+	go func() {
+		for {
+			buffer := read(conn, false)
+			if buffer == nil {
+				return
+			}
+			// todo
+			conn.Write([]byte(time.Now().String()))
+		}
+	}()
+}
+
+func WrapStd(conn net.Conn, typ string) {
+	switch typ {
+	case "tcp":
+		executeTcp(conn)
+	case "http":
+		executeHttp(conn)
+	}
+}
+
 func WapEPoll(buf []byte) []byte {
 	reqCtx := reqCtxPool.Get().(*RequestContext)
 	reqCtx.init()
@@ -210,9 +247,9 @@ func (rc *RequestContext) setMod(m mod) {
 	rc.mod = m
 }
 
-// keepalive set the net.conn to the tcpConn
-func (rc *RequestContext) keepalive(c net.Conn) *keepalive.Conn {
-	conn, err := keepalive.EnableKeepAlive(c)
+// alive set the net.conn to the tcpConn
+func (rc *RequestContext) alive(c net.Conn) *alive.Conn {
+	conn, err := alive.EnableKeepAlive(c)
 	if err != nil {
 		logger.Log.Error("EnableKeepAlive error: %v", err)
 	}
@@ -343,7 +380,6 @@ func (rc *RequestContext) connSend() {
 	}
 	response := rc.responseContext.wrapResponse()
 	rc.conn.Write(response)
-	//rc.conn.Close()
 }
 
 func (rc *RequestContext) asyncExecute(async chan struct{}) {
@@ -388,7 +424,7 @@ func (rc *RequestContext) asyncExecute(async chan struct{}) {
 func (rc *RequestContext) execute() (response *responseContext) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Log.Recovery(string(internal.PrintStack()))
+			logger.Log.Recovery(internal.BytesToString(internal.PrintStack()))
 		}
 		if rc.StrategyContext != nil && (rc.Async || rc.timeout) {
 			return
