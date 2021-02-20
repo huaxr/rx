@@ -59,26 +59,26 @@ func handler5(c ctx.ReqCxtI) {
 	c.JSON(200, "XXX")
 }
 
+// 处理文件上传
 func upload(c ctx.ReqCxtI) {
-	log.Println("zzzzzzzzzzzzzzzzzzz")
-	c.SaveLocalFile("/Users/hua/go/src/github.com/huaxr/rx/example/upload")
-	c.JSON(200, "xxx")
+	f, err := c.File("file")
+	if err != nil {
+		log.Println(err)
+		c.JSON(200, err.Error())
+		return
+	}
+	c.JSON(200, f.GetFileSize())
+	_ = f.GetFile().Close()
 }
 
 func ping(c ctx.ReqCxtI) {
-	container := make([]int, 8)
-	log.Println("> loop.")
-	// slice会动态扩容，用它来做堆内存的申请
-	for i := 0; i < 32*1000*1000; i++ {
-		container = append(container, i)
-	}
 	c.JSON(200, map[string]string{"message": "pong"})
 }
 
 // std epoll
 func main() {
 	server := engine.NewServer("std", "127.0.0.1:9999")
-	server.Type("tcp")
+	server.Type("http")
 	//server.Type("tcp")
 	defer server.Run()
 
@@ -86,7 +86,7 @@ func main() {
 		ctx.Abort(404, "not exist")
 	})
 
-	//ctx.DisableLog()
+	ctx.DisableLog()
 
 	group := ctx.Group("/v1", handler1)
 	group.Register("get", "ddd", handler2)
@@ -99,7 +99,6 @@ func main() {
 
 	ctx.Register("post", "/ccc", handler5)
 	ctx.Register("post", "/upload", upload)
-
 	ctx.Register("get", "/ping", ping)
 }
 
