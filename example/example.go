@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/huaxr/rx/logger"
+	"github.com/gin-gonic/gin"
 
 	"github.com/huaxr/rx/ctx"
 
@@ -66,19 +66,19 @@ func upload(c ctx.ReqCxtI) {
 }
 
 func ping(c ctx.ReqCxtI) {
+	container := make([]int, 8)
+	log.Println("> loop.")
+	// slice会动态扩容，用它来做堆内存的申请
+	for i := 0; i < 32*1000*1000; i++ {
+		container = append(container, i)
+	}
 	c.JSON(200, map[string]string{"message": "pong"})
 }
 
 // std epoll
 func main() {
-
-	logger.Log.Critical("xxxxxx")
-
-	logger.Log.Error("xxxxxx")
-	logger.Log.Warning("xxxxxx")
-
 	server := engine.NewServer("std", "127.0.0.1:9999")
-	server.Type("http")
+	server.Type("tcp")
 	//server.Type("tcp")
 	defer server.Run()
 
@@ -86,7 +86,7 @@ func main() {
 		ctx.Abort(404, "not exist")
 	})
 
-	ctx.DisableLog()
+	//ctx.DisableLog()
 
 	group := ctx.Group("/v1", handler1)
 	group.Register("get", "ddd", handler2)
@@ -101,4 +101,21 @@ func main() {
 	ctx.Register("post", "/upload", upload)
 
 	ctx.Register("get", "/ping", ping)
+}
+
+func mainq() {
+	r := gin.Default()
+	r.GET("/ping", func(c *gin.Context) {
+		container := make([]int, 8)
+		log.Println("> loop.")
+		// slice会动态扩容，用它来做堆内存的申请
+		for i := 0; i < 32*1000*1000; i++ {
+			container = append(container, i)
+		}
+
+		c.JSON(200, gin.H{
+			"message": "pong",
+		})
+	})
+	r.Run() // 监听并在 0.0.0.0:8080 上启动服务
 }
