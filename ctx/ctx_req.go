@@ -85,7 +85,7 @@ type RequestContext struct {
 
 	// whether this connection is alive
 	// conn will not close when keepalive set.
-	keepalive bool
+	//keepalive bool
 }
 
 var reqCtxPool = sync.Pool{
@@ -207,7 +207,31 @@ func executeHttp(conn net.Conn) {
 	reqCtx.execute()
 }
 
+// alive set the net.conn to the tcpConn
+func keepalive(c net.Conn) *alive.Conn {
+	conn, err := alive.EnableKeepAlive(c)
+	if err != nil {
+		logger.Log.Error("EnableKeepAlive error: %v", err)
+	}
+	err = conn.SetKeepAliveIdle(2 * time.Second)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveIdle failed: %v", err)
+	}
+
+	err = conn.SetKeepAliveCount(2)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveCount failed: %v", err)
+	}
+
+	err = conn.SetKeepAliveInterval(2 * time.Second)
+	if err != nil {
+		logger.Log.Error("SetKeepAliveInterval failed: %v", err)
+	}
+	return conn
+}
+
 func executeTcp(conn net.Conn) {
+	keepalive(conn)
 	go func() {
 		for {
 			buffer := read(conn, false)
@@ -245,29 +269,6 @@ func WapEPoll(buf []byte) []byte {
 
 func (rc *RequestContext) setMod(m mod) {
 	rc.mod = m
-}
-
-// alive set the net.conn to the tcpConn
-func (rc *RequestContext) alive(c net.Conn) *alive.Conn {
-	conn, err := alive.EnableKeepAlive(c)
-	if err != nil {
-		logger.Log.Error("EnableKeepAlive error: %v", err)
-	}
-	err = conn.SetKeepAliveIdle(10 * time.Second)
-	if err != nil {
-		logger.Log.Error("SetKeepAliveIdle failed: %v", err)
-	}
-
-	err = conn.SetKeepAliveCount(9)
-	if err != nil {
-		logger.Log.Error("SetKeepAliveCount failed: %v", err)
-	}
-
-	err = conn.SetKeepAliveInterval(10 * time.Second)
-	if err != nil {
-		logger.Log.Error("SetKeepAliveInterval failed: %v", err)
-	}
-	return conn
 }
 
 func (rc *RequestContext) setRawSock(c net.Conn) {

@@ -7,6 +7,7 @@ package engine
 import (
 	"net"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,12 +55,13 @@ func NewStdServer(addr string) *stdServer {
 	once := sync.Once{}
 	once.Do(func() {
 		listen, err := net.Listen("tcp", addr)
+
 		if err != nil {
 			panic(err)
 		}
 		t.listener = listen
 
-		ch := make(chan net.Conn, 1000)
+		ch := make(chan net.Conn, 500)
 		for i := 1; i <= LB; i++ {
 			t.ch = append(t.ch, ch)
 		}
@@ -85,7 +87,13 @@ func (t *stdServer) heartBeat() {
 		case <-t.tickHb.C:
 			g_num := runtime.NumGoroutine()
 			t.goroutine = g_num
-			logger.Log.Info("current goroutine count: %d", g_num)
+			// export GODEBUG='gctrace=1'
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			logger.Log.Info("current goroutine count: %d; MemStates: Alloc:%d(MB) HeapIdle:%d(MB) HeapInuse:%d(MB)", g_num, ms.Alloc/(1024*1024), ms.HeapIdle/(1024*1024), ms.HeapInuse/(1024*1024))
+			// force gc.
+			//runtime.GC()
+			debug.FreeOSMemory()
 		}
 	}
 }
