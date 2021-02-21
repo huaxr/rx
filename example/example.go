@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/huaxr/rx/example/asm"
 	"log"
 	"time"
 
@@ -59,17 +60,17 @@ func handler5(c ctx.ReqCxtI) {
 	c.JSON(200, "XXX")
 }
 
-// 处理文件上传
-func upload(c ctx.ReqCxtI) {
-	f, err := c.File("file")
-	if err != nil {
-		log.Println(err)
-		c.JSON(200, err.Error())
-		return
-	}
-	c.JSON(200, f.GetFileSize())
-	_ = f.GetFile().Close()
-}
+//// 处理文件上传
+//func upload(c ctx.ReqCxtI) {
+//	f, err := c.File("file")
+//	if err != nil {
+//		log.Println(err)
+//		c.JSON(200, err.Error())
+//		return
+//	}
+//	c.JSON(200, f.GetFileSize())
+//	_ = f.GetFile().Close()
+//}
 
 func ping(c ctx.ReqCxtI) {
 	c.JSON(200, map[string]string{"message": "pong"})
@@ -77,6 +78,9 @@ func ping(c ctx.ReqCxtI) {
 
 // std epoll
 func main() {
+	e := asm.Equal([]byte("hello"), []byte("hello"))
+	log.Println("xxxxxx", e)
+
 	server := engine.NewServer("std", "127.0.0.1:9999")
 	server.Type("http")
 	//server.Type("tcp")
@@ -98,7 +102,7 @@ func main() {
 	sub2.Register("get", "/eee", last)
 
 	ctx.Register("post", "/ccc", handler5)
-	ctx.Register("post", "/upload", upload)
+	//ctx.Register("post", "/upload", upload)
 	ctx.Register("get", "/ping", ping)
 }
 
