@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/huaxr/rx/example/asm"
 	"log"
 	"time"
+
+	"github.com/huaxr/rx/example/asm"
 
 	"github.com/gin-gonic/gin"
 
@@ -60,17 +61,17 @@ func handler5(c ctx.ReqCxtI) {
 	c.JSON(200, "XXX")
 }
 
-//// 处理文件上传
-//func upload(c ctx.ReqCxtI) {
-//	f, err := c.File("file")
-//	if err != nil {
-//		log.Println(err)
-//		c.JSON(200, err.Error())
-//		return
-//	}
-//	c.JSON(200, f.GetFileSize())
-//	_ = f.GetFile().Close()
-//}
+// 处理文件上传
+func upload(c ctx.ReqCxtI) {
+	f, err := c.File("file")
+	if err != nil {
+		log.Println(err)
+		c.JSON(200, err.Error())
+		return
+	}
+	c.JSON(200, f.GetFileSize())
+	_ = f.GetFile().Close()
+}
 
 func ping(c ctx.ReqCxtI) {
 	c.JSON(200, map[string]string{"message": "pong"})
